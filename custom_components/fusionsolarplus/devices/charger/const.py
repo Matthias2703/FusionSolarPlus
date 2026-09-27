@@ -250,3 +250,24 @@ CHARGING_STOP_SIGNAL_ID: int | None = None
 # charging vs. idle - until filled in, the charging switch falls back to its
 # last commanded (optimistic) state instead of guessing.
 CHARGING_ACTIVE_STATUS_VALUES: set[str] = set()
+
+# --- Charging mode (RECORDED ONLY, NOT WIRED UP) ---------------------------
+# We capture these while we're already in the network tab, so we don't have
+# to repeat the exercise later if we ever revisit mode switching. Nothing in
+# the integration reads these yet - no select/switch entity is built on top
+# of them (see the "Descope to plain start/stop charging" decision: EMMA runs
+# its own automatic mode logic, and fighting it from HA recreates the app's
+# own flakiness). Treat this purely as a notes field until that's revisited.
+#
+# Capture while manually switching in the portal:
+#   - "Zeitsteuerung" / Scheduled   -> id + value
+#   - "nur gruenes Laden" / PV Surplus -> id + value
+# (likely the same signal id as CHARGING_MODE_SIGNAL_ID with a different
+# value per mode, but confirm rather than assume - Huawei's protocol also
+# uses fully separate signal ids per command elsewhere, e.g. the inverter's
+# on/off use signal 21009 vs 21010, not one id with value 0/1)
+CHARGING_MODE_SIGNAL_ID: int | None = None
+CHARGING_MODE_VALUES: dict[str, str] = {
+    # "Scheduled": "<captured value>",
+    # "PV Surplus": "<captured value>",
+}
