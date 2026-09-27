@@ -227,27 +227,23 @@ CHARGER_DEVICE_SIGNALS = [
 # the action in the portal UI and read the `changeValues` payload of the
 # request, e.g. changeValues=[{"id": "12345", "value": "1"}].
 #
+# Scope is deliberately limited to plain Start/Stop charging - the same
+# single action a person triggers by hand in the app. We do NOT touch the
+# charging mode (Scheduled / "nur gruenes Laden" / PV Surplus): that is
+# EMMA's own automatic decision loop, and fighting it from Home Assistant
+# would recreate the same kind of conflict the native app already has.
+# Assumption: the portal is left on plain "Sofort laden" / "Laden" mode, and
+# this switch simply starts/stops within that mode.
+#
 # Needed:
 #   1. Start charging (Charge Now)  -> capture id/value while clicking "Start Charging"
 #   2. Stop charging                -> capture id/value while stopping a session
-#   3. Switch to "Scheduled" mode   -> capture id/value
-#   4. Switch to "PV Surplus" mode  -> capture id/value (if the portal exposes it
-#      as a separate mode rather than a scheduling profile)
 #
-# Until filled in, the charger switch/select entities are skipped entirely
-# (see devices/charger/switch.py, devices/charger/select.py) so nothing is
-# ever sent to the charger with a guessed/wrong signal id.
+# Until filled in, the charger switch is skipped entirely (see
+# devices/charger/switch.py) so nothing is ever sent to the charger with a
+# guessed/wrong signal id.
 CHARGING_START_SIGNAL_ID: int | None = None
 CHARGING_STOP_SIGNAL_ID: int | None = None
-
-# raw string value (as sent in `value`) -> HA select option label.
-# Fill in once captured; leave empty to keep the select entity disabled.
-CHARGING_MODE_SIGNAL_ID: int | None = None
-CHARGING_MODE_OPTIONS: dict[str, str] = {
-    # "0": "Charge Now",
-    # "1": "Scheduled",
-    # "2": "PV Surplus",
-}
 
 # raw string value(s) of "Working Status" (signal id 10004) that mean
 # "actively charging". Read these off a live sensor value while the car is
