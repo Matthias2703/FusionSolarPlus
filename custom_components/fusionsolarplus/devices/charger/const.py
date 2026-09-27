@@ -219,3 +219,38 @@ CHARGER_DEVICE_SIGNALS = [
         "device_class": SensorDeviceClass.ENUM,
     },
 ]
+
+# --- Charging control (NOT YET DISCOVERED) ---------------------------------
+# FusionSolar has no public docs for these writable signal IDs. They must be
+# captured once from a real account: open the FusionSolar portal, DevTools ->
+# Network tab, filter on "set-signal-with-randomval", then manually trigger
+# the action in the portal UI and read the `changeValues` payload of the
+# request, e.g. changeValues=[{"id": "12345", "value": "1"}].
+#
+# Needed:
+#   1. Start charging (Charge Now)  -> capture id/value while clicking "Start Charging"
+#   2. Stop charging                -> capture id/value while stopping a session
+#   3. Switch to "Scheduled" mode   -> capture id/value
+#   4. Switch to "PV Surplus" mode  -> capture id/value (if the portal exposes it
+#      as a separate mode rather than a scheduling profile)
+#
+# Until filled in, the charger switch/select entities are skipped entirely
+# (see devices/charger/switch.py, devices/charger/select.py) so nothing is
+# ever sent to the charger with a guessed/wrong signal id.
+CHARGING_START_SIGNAL_ID: int | None = None
+CHARGING_STOP_SIGNAL_ID: int | None = None
+
+# raw string value (as sent in `value`) -> HA select option label.
+# Fill in once captured; leave empty to keep the select entity disabled.
+CHARGING_MODE_SIGNAL_ID: int | None = None
+CHARGING_MODE_OPTIONS: dict[str, str] = {
+    # "0": "Charge Now",
+    # "1": "Scheduled",
+    # "2": "PV Surplus",
+}
+
+# raw string value(s) of "Working Status" (signal id 10004) that mean
+# "actively charging". Read these off a live sensor value while the car is
+# charging vs. idle - until filled in, the charging switch falls back to its
+# last commanded (optimistic) state instead of guessing.
+CHARGING_ACTIVE_STATUS_VALUES: set[str] = set()

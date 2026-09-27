@@ -41,6 +41,25 @@ def get_charger_data(client: Any, device_dn: str | None = None) -> dict:
     return _normalize_charger_payload(r.json())
 
 
+def get_charging_pile_signal_value(raw_data: dict, signal_id: int) -> Any:
+    """Look up one raw signal value from the charging-pile (connector) signal list.
+
+    `raw_data` is keyed by dnId, not by a fixed moc id, so the charging-pile
+    list has to be identified by its contents (same approach as
+    devices/charger/sensor.py's _get_signal_list_for_type) rather than by key.
+    """
+    for signals_list in raw_data.values():
+        if not isinstance(signals_list, list):
+            continue
+        names = {s.get("name") for s in signals_list if s.get("name")}
+        if "Charging Connector No." not in names:
+            continue
+        for signal in signals_list:
+            if signal.get("id") == signal_id:
+                return signal.get("realValue", signal.get("value"))
+    return None
+
+
 def _normalize_charger_payload(raw_data: dict) -> dict:
     value_map: dict[tuple[str, int], Any] = {}
     for signal_type_id, signals_list in raw_data.items():
