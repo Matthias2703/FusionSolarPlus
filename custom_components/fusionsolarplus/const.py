@@ -8,7 +8,7 @@ CONF_SCAN_INTERVAL = "scan_interval"
 CONF_CHARGER_CONTROL = "charger_control"
 
 # Whether charger entries expose the entities that write to the wallbox (charging mode,
-# cable lock, power limit, dynamic power). Off by default: nobody gets write access to
+# cable lock, dynamic power). Off by default: nobody gets write access to
 # their charger without opting in via the options flow. See the README section
 # 'Charger control'.
 DEFAULT_CHARGER_CONTROL = False

@@ -19,16 +19,15 @@ class ChargerSwitchHandler(BaseDeviceHandler):
                 self.entry.entry_id,
                 self.device_info,
                 self.device_id,
-                self.device_name,
                 SIGNAL_DYNAMIC_POWER,
                 "dynamic_charge_power",
-                "Dynamic Power",
             )
         ]
 
 
 class FusionSolarDynamicPowerSwitch(ChargerSettingEntity, SwitchEntity):
     _attr_icon = "mdi:solar-power"
+    _attr_translation_key = "dynamic_charge_power"
 
     @property
     def is_on(self) -> bool | None:

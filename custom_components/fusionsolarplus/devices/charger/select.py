@@ -42,7 +42,6 @@ class ChargerSelectHandler(BaseDeviceHandler):
                 self.entry.entry_id,
                 self.device_info,
                 self.device_id,
-                self.device_name,
             ),
             FusionSolarConnectorLockSelect(
                 coordinator,
@@ -50,10 +49,8 @@ class ChargerSelectHandler(BaseDeviceHandler):
                 self.entry.entry_id,
                 self.device_info,
                 self.device_id,
-                self.device_name,
                 SIGNAL_CONNECTOR_LOCK,
                 "connector_lock_control",
-                "Cable Lock",
             ),
         ]
 
@@ -67,6 +64,7 @@ class FusionSolarChargingModeSelect(CoordinatorEntity, SelectEntity):
     """
 
     _attr_icon = "mdi:ev-station"
+    _attr_has_entity_name = True
     _attr_options = CHARGING_MODE_OPTIONS
     _attr_translation_key = "charging_mode"
 
@@ -77,7 +75,6 @@ class FusionSolarChargingModeSelect(CoordinatorEntity, SelectEntity):
         entry_id: str,
         device_info: Dict[str, Any],
         device_id: str,
-        device_name: str,
     ):
         super().__init__(coordinator)
         self.hass = hass
@@ -87,7 +84,6 @@ class FusionSolarChargingModeSelect(CoordinatorEntity, SelectEntity):
         self._pending: str | None = None
         self._writing = False
         self._attr_unique_id = f"{device_id}_charging_mode_select"
-        self._attr_name = f"{device_name} Charging Mode"
 
     @property
     def device_info(self):
@@ -122,9 +118,13 @@ class FusionSolarChargingModeSelect(CoordinatorEntity, SelectEntity):
 
     @property
     def available(self) -> bool:
-        return self.coordinator.last_update_success and (
-            self._pending is not None or self.cloud_option is not None
-        )
+        if self._pending is not None:
+            return True
+        return self.coordinator.last_update_success and self.cloud_option is not None
+
+    def _write_state(self) -> None:
+        if self.hass is not None and self.entity_id:
+            self.async_write_ha_state()
 
     def _apply(self, option: str) -> None:
         """Blocking: send the writes for one option (runs in the executor).
@@ -133,7 +133,11 @@ class FusionSolarChargingModeSelect(CoordinatorEntity, SelectEntity):
         possibly stale coordinator data. If the second step fails after the
         first succeeded the schedule stays on, which is why the error says so.
         """
-        client = self.hass.data[DOMAIN][self._entry_id]
+        client = self.hass.data.get(DOMAIN, {}).get(self._entry_id)
+        if client is None:
+            raise HomeAssistantError(
+                "The integration was reloaded while writing; check the mode"
+            )
         backup = make_plan_backup(self.hass)
         if option == MODE_SCHEDULED:
             client.set_charger_schedule_enabled(self._device_id, True, backup)
@@ -156,7 +160,7 @@ class FusionSolarChargingModeSelect(CoordinatorEntity, SelectEntity):
 
         self._writing = True
         self._pending = option
-        self.async_write_ha_state()
+        self._write_state()
         try:
             for attempt in range(1, MAX_ATTEMPTS + 1):
                 try:
@@ -188,7 +192,7 @@ class FusionSolarChargingModeSelect(CoordinatorEntity, SelectEntity):
         finally:
             self._pending = None
             self._writing = False
-            self.async_write_ha_state()
+            self._write_state()
 
 
 class FusionSolarConnectorLockSelect(ChargerSettingEntity, SelectEntity):

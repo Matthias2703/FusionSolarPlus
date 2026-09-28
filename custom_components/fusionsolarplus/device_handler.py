@@ -65,16 +65,10 @@ class BaseDeviceHandler:
 
         async def ensure_logged_in(client_instance):
             try:
-                is_active = await self.hass.async_add_executor_job(
-                    client_instance.is_session_active
-                )
-                if not is_active:
-                    await self.hass.async_add_executor_job(client_instance._login)
-                    is_active = await self.hass.async_add_executor_job(
-                        client_instance.is_session_active
-                    )
-                    if not is_active:
-                        raise Exception("Login completed but session still not active")
+                if not await self.hass.async_add_executor_job(
+                    client_instance.ensure_session
+                ):
+                    raise Exception("Login completed but session still not active")
                 return True
             except Exception as err:
                 _LOGGER.warning(
@@ -120,10 +114,7 @@ class BaseDeviceHandler:
                 if attempt < max_retries:
                     recovery_success = False
                     try:
-                        await self.hass.async_add_executor_job(client._login)
-                        if await self.hass.async_add_executor_job(
-                            client.is_session_active
-                        ):
+                        if await self.hass.async_add_executor_job(client.relogin):
                             recovery_success = True
                     except Exception as login_err:
                         _LOGGER.debug("Re-login failed: %r", login_err)
@@ -135,7 +126,9 @@ class BaseDeviceHandler:
                                 client = new_client
                                 recovery_success = True
                         except Exception as client_err:
-                            _LOGGER.debug("Creating a new client failed: %r", client_err)
+                            _LOGGER.debug(
+                                "Creating a new client failed: %r", client_err
+                            )
 
                     if recovery_success:
                         await asyncio.sleep(2)

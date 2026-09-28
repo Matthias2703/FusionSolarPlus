@@ -1,10 +1,16 @@
 import logging
-from homeassistant.exceptions import ConfigEntryNotReady
-from homeassistant.helpers.device_registry import async_get as async_get_device_registry
-from .api.client import FusionSolarClient
 from functools import partial
 
-from .const import DOMAIN
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.device_registry import async_get as async_get_device_registry
+
+from .api.client import FusionSolarClient
+from .api.devices.charger_api import clear_caches
+from .api.exceptions import AuthenticationException
+
+from .const import CONF_CHARGER_CONTROL, DEFAULT_CHARGER_CONTROL, DOMAIN
+from .devices.charger.cleanup import stale_entity_ids
 from .sensor import DeviceHandlerFactory
 
 _LOGGER = logging.getLogger(__name__)
@@ -19,15 +25,20 @@ async def async_setup_entry(hass, entry):
     password = entry.options.get("password", entry.data["password"])
     subdomain = entry.options.get("subdomain", entry.data.get("subdomain", "uni001eu5"))
 
-    client = await hass.async_add_executor_job(
-        partial(
-            FusionSolarClient,
-            username,
-            password,
-            captcha_model_path=hass,
-            huawei_subdomain=subdomain,
+    try:
+        client = await hass.async_add_executor_job(
+            partial(
+                FusionSolarClient,
+                username,
+                password,
+                captcha_model_path=hass,
+                huawei_subdomain=subdomain,
+            )
         )
-    )
+    except AuthenticationException as err:
+        raise ConfigEntryAuthFailed(f"FusionSolar login failed: {err}") from err
+    except Exception as err:
+        raise ConfigEntryNotReady(f"FusionSolar is not reachable: {err}") from err
 
     if DOMAIN not in hass.data:
         hass.data[DOMAIN] = {}
@@ -68,6 +79,15 @@ async def async_setup_entry(hass, entry):
         model=entry.data["device_type"],
     )
 
+    if device_type == "Charger":
+        registry = er.async_get(hass)
+        for entity_id in stale_entity_ids(
+            er.async_entries_for_config_entry(registry, entry.entry_id),
+            str(device_id),
+            entry.options.get(CONF_CHARGER_CONTROL, DEFAULT_CHARGER_CONTROL),
+        ):
+            registry.async_remove(entity_id)
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     return True
@@ -81,6 +101,7 @@ async def async_unload_entry(hass, entry):
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
     if unload_ok:
+        clear_caches(entry.data.get("device_id"))
         hass.data[DOMAIN].pop(f"{entry.entry_id}_coordinator", None)
         hass.data[DOMAIN].pop(f"{entry.entry_id}_device_info", None)
         hass.data[DOMAIN].pop(f"{entry.entry_id}_sensor_handler", None)

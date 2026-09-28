@@ -23,6 +23,13 @@
         "data": {
           "device_name": "Please select an device from your account"
         }
+      },
+      "reauth_confirm": {
+        "title": "Reauthenticate FusionSolar",
+        "description": "The FusionSolar login failed. Enter the current password.",
+        "data": {
+          "password": "Password"
+        }
       }
     },
     "error": {
@@ -32,7 +39,8 @@
       "unknown": "Unknown error occurred."
     },
     "abort": {
-      "fetch_error": "Could not fetch device list from FusionSolar."
+      "fetch_error": "Could not fetch device list from FusionSolar.",
+      "reauth_successful": "Reauthentication was successful."
     }
   },
   "options": {
@@ -46,7 +54,7 @@
           "subdomain": "Subdomain",
           "installer": "Enable installer access. By checking this checkbox I confirm that I have read the installer disclaimer.",
           "scan_interval": "Update interval in seconds (10-3600)",
-          "charger_control": "Enable charger control (charging mode, cable lock, power limit, dynamic power)"
+          "charger_control": "Enable charger control (charging mode, cable lock, dynamic power)"
         }
       }
     }
@@ -68,6 +76,11 @@
           "lock_when_charging": "Lock when charging",
           "lock_after_insert": "Lock after being inserted"
         }
+      }
+    },
+    "switch": {
+      "dynamic_charge_power": {
+        "name": "Dynamic power"
       }
     }
   }

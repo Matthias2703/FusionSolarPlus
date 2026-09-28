@@ -14,6 +14,7 @@ from homeassistant.components.sensor import (
 from homeassistant.helpers.entity import generate_entity_id
 from homeassistant.components.sensor import ENTITY_ID_FORMAT
 
+from ...const import CONF_CHARGER_CONTROL, DEFAULT_CHARGER_CONTROL
 from ...device_handler import BaseDeviceHandler
 from .const import (
     CHARGING_PILE_SIGNALS,
@@ -24,10 +25,17 @@ from .const import (
 class ChargerDeviceHandler(BaseDeviceHandler):
     """Handler for Charger devices"""
 
+    @property
+    def control_enabled(self) -> bool:
+        return self.entry.options.get(CONF_CHARGER_CONTROL, DEFAULT_CHARGER_CONTROL)
+
     async def _async_get_data(self) -> Dict[str, Any]:
         async def fetch_charger_data(client):
             return await self.hass.async_add_executor_job(
-                client.get_charger_data, self.device_id, self.hass.config.time_zone
+                client.get_charger_data,
+                self.device_id,
+                self.hass.config.time_zone,
+                self.control_enabled,
             )
 
         return await self._get_client_and_retry(fetch_charger_data)
@@ -73,7 +81,8 @@ class ChargerDeviceHandler(BaseDeviceHandler):
                         unique_ids.add(unique_id)
 
         entities.extend(self._create_history_entities(coordinator))
-        entities.extend(self._create_setting_sensors(coordinator))
+        if self.control_enabled:
+            entities.extend(self._create_setting_sensors(coordinator))
         return entities
 
     def _create_setting_sensors(self, coordinator: DataUpdateCoordinator) -> List:
@@ -103,19 +112,65 @@ class ChargerDeviceHandler(BaseDeviceHandler):
             return extract
 
         def to_time(value):
-            return datetime.fromtimestamp(int(float(value)), tz=timezone.utc)
+            # The cloud sends epoch seconds; tolerate milliseconds as well.
+            seconds = float(value)
+            if seconds > 1e11:
+                seconds /= 1000
+            return datetime.fromtimestamp(int(seconds), tz=timezone.utc)
 
         mode_names = {0: "Normal charge", 1: "PV surplus"}
         specs = [
-            ("history_total", "Charge Sessions (180 Days)", lambda h: h.get("total"), None, None, SensorStateClass.MEASUREMENT),
-            ("history_last_energy", "Last Session Energy", last("totalPower", float), "kWh", SensorDeviceClass.ENERGY, None),
-            ("history_last_duration", "Last Session Duration", last("totalTime", lambda v: int(float(v))), "min", SensorDeviceClass.DURATION, None),
-            ("history_last_start", "Last Session Start", last("startTime", to_time), None, SensorDeviceClass.TIMESTAMP, None),
-            ("history_last_mode", "Last Session Mode", last("chargeMode", lambda v: mode_names.get(int(v), str(v))), None, None, None),
+            (
+                "history_total",
+                "Charge Sessions (180 Days)",
+                lambda h: h.get("total"),
+                None,
+                None,
+                SensorStateClass.MEASUREMENT,
+            ),
+            (
+                "history_last_energy",
+                "Last Session Energy",
+                last("totalPower", float),
+                "kWh",
+                SensorDeviceClass.ENERGY,
+                None,
+            ),
+            (
+                "history_last_duration",
+                "Last Session Duration",
+                last("totalTime", lambda v: int(float(v))),
+                "min",
+                SensorDeviceClass.DURATION,
+                None,
+            ),
+            (
+                "history_last_start",
+                "Last Session Start",
+                last("startTime", to_time),
+                None,
+                SensorDeviceClass.TIMESTAMP,
+                None,
+            ),
+            (
+                "history_last_mode",
+                "Last Session Mode",
+                last("chargeMode", lambda v: mode_names.get(int(v), str(v))),
+                None,
+                None,
+                None,
+            ),
         ]
         return [
             FusionSolarChargeHistorySensor(
-                coordinator, self.device_info, key, name, extract, unit, device_class, state_class
+                coordinator,
+                self.device_info,
+                key,
+                name,
+                extract,
+                unit,
+                device_class,
+                state_class,
             )
             for key, name, extract, unit, device_class, state_class in specs
         ]
@@ -233,7 +288,10 @@ class FusionSolarChargeHistorySensor(CoordinatorEntity, SensorEntity):
         history = (self.coordinator.data or {}).get("history")
         if not history:
             return None
-        return self._extract(history)
+        try:
+            return self._extract(history)
+        except (TypeError, ValueError, OverflowError, OSError):
+            return None
 
     @property
     def available(self):

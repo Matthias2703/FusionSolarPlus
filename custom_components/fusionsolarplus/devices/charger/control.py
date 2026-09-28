@@ -46,6 +46,7 @@ class ChargerSettingEntity(CoordinatorEntity):
     """One writable charger config signal, confirmed after every change."""
 
     _attr_entity_category = EntityCategory.CONFIG
+    _attr_has_entity_name = True
 
     def __init__(
         self,
@@ -54,10 +55,8 @@ class ChargerSettingEntity(CoordinatorEntity):
         entry_id: str,
         device_info: Dict[str, Any],
         device_id: str,
-        device_name: str,
         signal_id: int,
         key: str,
-        name: str,
     ):
         super().__init__(coordinator)
         self.hass = hass
@@ -68,7 +67,6 @@ class ChargerSettingEntity(CoordinatorEntity):
         self._pending: str | None = None
         self._writing = False
         self._attr_unique_id = f"{device_id}_{key}"
-        self._attr_name = f"{device_name} {name}"
 
     @property
     def device_info(self):
@@ -89,9 +87,14 @@ class ChargerSettingEntity(CoordinatorEntity):
 
     @property
     def available(self) -> bool:
-        return self.coordinator.last_update_success and (
-            self._pending is not None or self.raw_value is not None
-        )
+        if self._pending is not None:
+            return True
+        return self.coordinator.last_update_success and self.raw_value is not None
+
+    def _write_state(self) -> None:
+        """Write the state unless the entity was removed while a write ran."""
+        if self.hass is not None and self.entity_id:
+            self.async_write_ha_state()
 
     async def _write(self, value: str, matches: Callable[[str], bool]) -> None:
         """Write `value`, confirm via fresh reads, rewrite once if it never shows up."""
@@ -100,10 +103,14 @@ class ChargerSettingEntity(CoordinatorEntity):
 
         self._writing = True
         self._pending = value
-        self.async_write_ha_state()
+        self._write_state()
         try:
             for attempt in range(1, MAX_ATTEMPTS + 1):
-                client = self.hass.data[DOMAIN][self._entry_id]
+                client = self.hass.data.get(DOMAIN, {}).get(self._entry_id)
+                if client is None:
+                    raise HomeAssistantError(
+                        "The integration was reloaded while writing; check the value"
+                    )
                 try:
                     await self.hass.async_add_executor_job(
                         client.set_charger_setting,
@@ -137,4 +144,4 @@ class ChargerSettingEntity(CoordinatorEntity):
         finally:
             self._pending = None
             self._writing = False
-            self.async_write_ha_state()
+            self._write_state()

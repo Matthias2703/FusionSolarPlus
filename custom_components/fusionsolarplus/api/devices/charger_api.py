@@ -7,11 +7,27 @@ import logging
 import threading
 import time
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any, Callable, TypedDict
 
 from ..values import finite_or_none
 
 _LOGGER = logging.getLogger(__name__)
+
+
+class ChargerControl(TypedDict):
+    working_mode: str | None
+    schedule_on: bool
+    settings: dict[int, str]
+
+
+class ChargerData(TypedDict, total=False):
+    """What the charger coordinator holds."""
+
+    raw_data: dict
+    value_map: dict[tuple[str, int], Any]
+    control: ChargerControl | None
+    history: dict
+
 
 CONNECTOR = "connector"
 CHARGER = "charger"
@@ -72,12 +88,12 @@ _LOCK_GUARD = threading.Lock()
 
 
 def _client_lock(client: Any) -> threading.RLock:
-    """One lock per client: polling and writes share a single requests session."""
+    """The client's own lock: polling and writes share a single requests session."""
     with _LOCK_GUARD:
-        lock = getattr(client, "_charger_lock", None)
+        lock = getattr(client, "_lock", None)
         if lock is None:
             lock = threading.RLock()
-            client._charger_lock = lock
+            client._lock = lock
         return lock
 
 
@@ -94,6 +110,15 @@ def _recovered(key: str) -> None:
 
 def invalidate_control_cache(device_dn: str | None) -> None:
     _CONTROL_CACHE.pop(device_dn, None)
+
+
+def clear_caches(device_dn: str | None) -> None:
+    """Forget everything cached for one charger (called when its entry unloads)."""
+    _DN_CACHE.pop(device_dn, None)
+    _CONTROL_CACHE.pop(device_dn, None)
+    for key in list(_WARNED):
+        if key.endswith(f":{device_dn}"):
+            _WARNED.discard(key)
 
 
 def _base_url(client: Any) -> str:
@@ -134,7 +159,8 @@ def _get_dn_ids(client: Any, device_dn: str | None) -> tuple[str, str]:
 
     connector = child of the charger in the device tree (holds the working
     mode signal); charger = the device itself (holds the schedule).
-    The ids never change for a device, so they are looked up once.
+    The ids never change for a device, so they are looked up once. Nothing
+    is cached unless both ids look valid.
     """
     if device_dn in _DN_CACHE:
         return _DN_CACHE[device_dn]
@@ -147,17 +173,30 @@ def _get_dn_ids(client: Any, device_dn: str | None) -> tuple[str, str]:
         "filterCond": {"nameType": "device", "mocIdInclude": [60081]},
         "displayCond": {"self": False, "status": True},
     }
-    r = client._session.post(url=url, json=payload)
-    r.raise_for_status()
-    connector_dn_id = r.json()["childList"][0]["elementId"]
+    body = _json(client._session.post(url=url, json=payload))
+    children = body.get("childList") if isinstance(body, dict) else None
+    if not children:
+        raise RuntimeError(f"No charging connector found for {device_dn}")
+    if len(children) > 1:
+        _warn_once(
+            f"connectors:{device_dn}",
+            "More than one connector found, only the first one is controlled",
+            RuntimeError(f"{len(children)} connectors"),
+        )
+    try:
+        connector_dn_id = int(children[0]["elementId"])
+    except (KeyError, TypeError, ValueError) as err:
+        raise RuntimeError(f"Connector without a usable id: {children[0]!r}") from err
 
     url = f"{_base_url(client)}/rest/pvms/web/device/v1/mo-details"
     params = (("dn", device_dn), ("_", round(time.time() * 1000)))
-    r = client._session.get(url=url, params=params)
-    r.raise_for_status()
-    charger_dn_id = str(r.json().get("data", {}).get("mo", {}).get("dnId"))
+    body = _json(client._session.get(url=url, params=params))
+    try:
+        charger_dn_id = int(((body or {}).get("data") or {}).get("mo", {})["dnId"])
+    except (KeyError, TypeError, ValueError, AttributeError) as err:
+        raise RuntimeError(f"Charger {device_dn} has no usable dnId") from err
 
-    _DN_CACHE[device_dn] = (str(connector_dn_id), charger_dn_id)
+    _DN_CACHE[device_dn] = (str(connector_dn_id), str(charger_dn_id))
     return _DN_CACHE[device_dn]
 
 
@@ -257,8 +296,11 @@ def _query_charge_history(
 
 
 def get_charger_data(
-    client: Any, device_dn: str | None = None, time_zone: str = "UTC"
-) -> dict:
+    client: Any,
+    device_dn: str | None = None,
+    time_zone: str = "UTC",
+    include_control: bool = False,
+) -> ChargerData:
     with _client_lock(client):
         client.keep_alive()
 
@@ -276,15 +318,17 @@ def get_charger_data(
         data = _normalize_charger_payload(r.json())
 
         # Control state and history are best-effort: a failure here must not
-        # take the read-only sensors down with it.
-        try:
-            data["control"] = _read_control(client, device_dn, dn_id_1, dn_id_2)
-            _recovered(f"control:{device_dn}")
-        except Exception as err:
-            _warn_once(
-                f"control:{device_dn}", "Could not read charger control state", err
-            )
-            data["control"] = None
+        # take the read-only sensors down with it. The control reads (settings
+        # and schedule) only happen when charger control is switched on.
+        data["control"] = None
+        if include_control:
+            try:
+                data["control"] = _read_control(client, device_dn, dn_id_1, dn_id_2)
+                _recovered(f"control:{device_dn}")
+            except Exception as err:
+                _warn_once(
+                    f"control:{device_dn}", "Could not read charger control state", err
+                )
 
         data["history"] = _query_charge_history(client, dn_id_2, time_zone)
         return data
@@ -298,13 +342,18 @@ def _validate(signal_id: int, value: str) -> None:
 def set_charger_setting(
     client: Any, device_dn: str, signal_id: int, value: str
 ) -> None:
-    """Write one whitelisted, validated config signal to the connector dn."""
+    """Write one whitelisted, validated config signal to the dn the whitelist names."""
     if signal_id not in WRITABLE_SIGNALS:
         raise ValueError(f"Signal {signal_id} is not writable through this integration")
     _validate(signal_id, value)
     with _client_lock(client):
         client.keep_alive()
-        dn_id, _ = _get_dn_ids(client, device_dn)
+        connector_dn_id, charger_dn_id = _get_dn_ids(client, device_dn)
+        dn_id = (
+            connector_dn_id
+            if WRITABLE_SIGNALS[signal_id] == CONNECTOR
+            else charger_dn_id
+        )
         url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/device/set-config-info"
         payload = {
             "changeValues": [{"id": str(signal_id), "value": str(value)}],
@@ -356,7 +405,9 @@ def _check_plans_can_be_resent(plans: list[dict]) -> None:
     for plan in plans:
         missing = [f for f in PLAN_REQUIRED_FIELDS if f not in plan]
         if missing:
-            raise ValueError(f"Charging plan lacks {missing}; change the mode in the app")
+            raise ValueError(
+                f"Charging plan lacks {missing}; change the mode in the app"
+            )
         if not plan["isRepeat"]:
             raise ValueError(
                 "A one-time charging plan exists; change the mode in the app instead"
@@ -369,11 +420,15 @@ def _read_plans_stable(client: Any, charger_dn_id: str, first: dict) -> dict:
     second = _query_plan(client, charger_dn_id)
     for body in (first, second):
         if not isinstance(body.get("plans"), list):
-            raise RuntimeError("query-plan returned no plan list - not touching the plans")
+            raise RuntimeError(
+                "query-plan returned no plan list - not touching the plans"
+            )
     if _truthy(first["switchOn"]) != _truthy(second["switchOn"]) or _plan_signature(
         first["plans"]
     ) != _plan_signature(second["plans"]):
-        raise RuntimeError("Charging plans changed between two reads - not touching them")
+        raise RuntimeError(
+            "Charging plans changed between two reads - not touching them"
+        )
     return second
 
 
@@ -447,7 +502,9 @@ def set_charger_schedule_enabled(
         if _plans_match(client, charger_dn_id, plans):
             return
 
-        _LOGGER.error("Charging plans differ after the write, restoring the previous plans")
+        _LOGGER.error(
+            "Charging plans differ after the write, restoring the previous plans"
+        )
         try:
             _write_plans(client, charger_dn_id, plans, was_on)
             restored = _plans_match(client, charger_dn_id, plans)

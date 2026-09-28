@@ -23,6 +23,13 @@
         "data": {
           "device_name": "Bitte wähle ein Gerät aus deinem Konto aus"
         }
+      },
+      "reauth_confirm": {
+        "title": "FusionSolar erneut anmelden",
+        "description": "Die Anmeldung bei FusionSolar ist fehlgeschlagen. Gib das aktuelle Passwort ein.",
+        "data": {
+          "password": "Passwort"
+        }
       }
     },
     "error": {
@@ -32,7 +39,8 @@
       "unknown": "Es ist ein unbekannter Fehler aufgetreten."
     },
     "abort": {
-      "fetch_error": "Die Geräteliste konnte nicht von FusionSolar abgerufen werden."
+      "fetch_error": "Die Geräteliste konnte nicht von FusionSolar abgerufen werden.",
+      "reauth_successful": "Die erneute Anmeldung war erfolgreich."
     }
   },
   "options": {
@@ -46,7 +54,7 @@
           "subdomain": "Subdomain",
           "installer": "Installateur-Zugriff aktivieren. Mit dem Setzen dieses Hakens bestätige ich, den Haftungsausschluss für Installateure gelesen zu haben.",
           "scan_interval": "Aktualisierungsintervall in Sekunden (10-3600)",
-          "charger_control": "Wallbox-Steuerung aktivieren (Lademodus, Kabelverriegelung, Leistungslimit, Dynamic Power)"
+          "charger_control": "Wallbox-Steuerung aktivieren (Lademodus, Kabelverriegelung, Dynamic Power)"
         }
       }
     }
@@ -68,6 +76,11 @@
           "lock_when_charging": "Beim Laden verriegeln",
           "lock_after_insert": "Nach dem Einstecken verriegeln"
         }
+      }
+    },
+    "switch": {
+      "dynamic_charge_power": {
+        "name": "Dynamische Leistung"
       }
     }
   }

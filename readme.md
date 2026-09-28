@@ -68,9 +68,9 @@ When configuring the energy dashboard you need to provide the following settings
 For Huawei SCharger wallboxes the integration can also **write** to the charger through the FusionSolar cloud. Because this changes real hardware, it is **off by default** and has to be enabled per charger entry:
 
 1. **Settings » Devices & Services » FusionSolarPlus**, open the **Charger** entry.
-2. Click **Configure** and tick **Enable charger control**, then submit. The entry reloads and the entities below appear. Untick it to remove them again (entities that were already created stay in the registry as "no longer provided" and can be deleted there).
+2. Click **Configure** and tick **Enable charger control**, then submit. The entry reloads and the entities below appear. Untick it to switch them off again; the entities are then removed from the registry automatically.
 
-The read-only charger sensors (status, power, energy, charge history, and the two diagnostic values below) do not depend on this option.
+The read-only charger sensors (status, power, energy and charge history) do not depend on this option. The diagnostic values below (power limit, PV thresholds) are read from the cloud together with the control state, so they appear only when charger control is on; with it off the integration makes no control or schedule requests at all.
 
 ## Entities added by charger control
 
@@ -92,10 +92,9 @@ How the three modes map to the cloud:
 
 If the schedule is on, *Scheduled* wins whatever the working mode says. The working mode is available as the `working_mode` attribute of the select.
 
-## Read-only additions (always available)
+## Read-only additions
 
-* **Power Limit** (diagnostic, kW): the charge power upper limit. It is read-only on purpose, see the limitations.
-* **PV Start Surplus** and **PV Max Grid Power** (diagnostic): the app flags these two values as internal defaults it never shows, so they can be read but not changed.
+* **Power Limit**, **PV Start Surplus** and **PV Max Grid Power** (diagnostic, only with charger control on): the power limit is read-only on purpose (see the limitations); the app flags the two PV values as internal defaults it never shows, so they can be read but not changed.
 * **Charge Sessions (180 Days)**, **Last Session Energy / Duration / Start / Mode**: taken from the charge records, refreshed at most every 5 minutes.
 
 ## How writes behave
@@ -103,7 +102,7 @@ If the schedule is on, *Scheduled* wins whatever the working mode says. The work
 * Only a fixed list of signals can be written (working mode, cable lock, dynamic power and the schedule switch). Installer and safety values such as the main breaker, earthing system, networking mode, phase switching and the charging plans themselves are never written.
 * Values are checked before anything is sent (allowed options only).
 * Every change is confirmed by reading the value back (up to three checks, then one rewrite). While that happens the entity shows the requested value instead of turning *unavailable*; if the cloud never confirms it, the action fails with an error.
-* Switching the schedule resends the existing plans unchanged (the cloud replaces the whole list), skips the write if the schedule is already in the requested state, writes the previous plans to the log, and compares the plans after the change.
+* Switching the schedule has to resend the whole plan list (the cloud replaces it as a whole), so it is done defensively: nothing is written if the schedule is already in the requested state, if the plan list is missing or empty, if two reads a moment apart disagree, or if a plan is a one-time plan or lacks a field (change the mode in the FusionSolar app then). Before the write the plans are logged as a WARNING and stored in `.storage/fusionsolarplus_plan_backup` (the last five). Afterwards every stored field is compared; if the plans did not come back exactly, one restore attempt is made and the action fails with an error that says whether it worked.
 * The cloud sometimes answers HTTP 200 with an error inside the body; that is treated as an error, and a state that cannot be read makes the entity unavailable instead of guessing.
 
 ## Limitations
@@ -112,13 +111,15 @@ If the schedule is on, *Scheduled* wins whatever the working mode says. The work
 * **Tested on one charger** (SCharger-22KT-S0 with an EMMA): charging mode, schedule, dynamic power and cable lock were exercised against the real device, and the cable lock request was compared with the one the FusionSolar app sends (identical). 
 * **The power limit cannot be changed from Home Assistant.** On the tested charger, lowering it below the power of a saved charging schedule (11 kW to 10 kW) made the cloud delete all schedules. They had to be recreated in the app. Change the limit in the FusionSolar app, which warns about this.
 * **Schedules are stored in UTC.** The cloud returns and expects the plan times in UTC and the app converts them (a plan shown as 17:00 in Germany in summer is stored as 15:00). The integration never edits plans; when switching the schedule it resends them exactly as read.
+* **Only the first connector is used.** A charger with more than one connector is controlled through the first one and a warning is logged.
+* **One-time plans block mode switching from Home Assistant.** They cannot be reproduced exactly, so switching the schedule is refused while one exists.
 * **Starting or stopping a running charging session is not supported.** Only the mode and settings above are.
 * **Two controllers.** An EMMA runs its own automatic charging logic. The integration only sees a change made by the EMMA or the app on the next update and does not fight it.
 * Charge now, PV surplus and Scheduled describe what the cloud reports; the wallbox itself needs a connected and released car to actually charge.
 
 ## Other options
 
-Every entry has an **Update interval** option (10–3600 s, default 15 s). Control state and the schedule are cached for 45 s and refreshed right after every change. The setup and options dialogs are available in English and German.
+Every entry has an **Update interval** option (10–3600 s, default 15 s). Control state and the schedule are cached for 45 s and refreshed right after every change. The setup and options dialogs are available in English and German. If the FusionSolar login stops working (for example after a password change) Home Assistant asks for the password again instead of retrying forever; when the cloud is merely unreachable at startup, setup is retried automatically.
 
 # Entities
 

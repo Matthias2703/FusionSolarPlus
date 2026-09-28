@@ -8,6 +8,7 @@ Architecture overview for contributors:
 """
 
 import logging
+import threading
 import time
 from datetime import datetime
 from decimal import Decimal
@@ -203,20 +204,23 @@ def logged_in(func):
 
     @wraps(func)
     def wrapper(self, *args, **kwargs):
-        # use the is-session-alive feature to check whether the session is active
-        if not self.is_session_active():
-            _LOGGER.debug("No active session. Resetting session and logging in...")
+        # One call at a time per client: the session may be replaced below, which
+        # must never happen in the middle of another call (e.g. a plan write).
+        with self._lock:
+            # use the is-session-alive feature to check whether the session is active
+            if not self.is_session_active():
+                _LOGGER.debug("No active session. Resetting session and logging in...")
 
-            # reset the session
-            self._session = _TimeoutSession()
-            self._configure_session()
+                # reset the session
+                self._session = _TimeoutSession()
+                self._configure_session()
 
-        try:
-            result = func(self, *args, **kwargs)
-        except json.JSONDecodeError:
-            # this may indicate that the login failed
-            _LOGGER.error("Login apparently failed. Received invalid response.")
-            raise FusionSolarException("Failed to reset session and login again.")
+            try:
+                result = func(self, *args, **kwargs)
+            except json.JSONDecodeError:
+                # this may indicate that the login failed
+                _LOGGER.error("Login apparently failed. Received invalid response.")
+                raise FusionSolarException("Failed to reset session and login again.")
 
         return result
 
@@ -290,6 +294,7 @@ class FusionSolarClient:
         self._user = username
         self._password = password
         self._captcha_verify_code = None
+        self._lock = threading.RLock()
         if session is None:
             self._session = _TimeoutSession()
         else:
@@ -660,6 +665,20 @@ class FusionSolarClient:
 
         self._company_id = r.json()["data"]["moDn"]
 
+    def ensure_session(self) -> bool:
+        """Log in again if the session is dead; True if it is usable afterwards."""
+        with self._lock:
+            if self.is_session_active():
+                return True
+            self._login()
+            return self.is_session_active()
+
+    def relogin(self) -> bool:
+        """Force a fresh login; True if the session is usable afterwards."""
+        with self._lock:
+            self._login()
+            return self.is_session_active()
+
     def is_session_active(self) -> bool:
         """Tests whether the current session is active. In the web-based application, this
         function is triggered every 10 seconds.
@@ -817,8 +836,13 @@ class FusionSolarClient:
         return inverter_api.get_inverter_data(self, device_dn)
 
     @logged_in
-    def get_charger_data(self, device_dn: str = None, time_zone: str = "UTC") -> dict:
-        return charger_api.get_charger_data(self, device_dn, time_zone)
+    def get_charger_data(
+        self,
+        device_dn: str = None,
+        time_zone: str = "UTC",
+        include_control: bool = False,
+    ) -> dict:
+        return charger_api.get_charger_data(self, device_dn, time_zone, include_control)
 
     @logged_in
     def set_charger_working_mode(self, device_dn: str, value: str) -> None:

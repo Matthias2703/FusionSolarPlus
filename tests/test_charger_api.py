@@ -8,24 +8,8 @@ bodies mirror what the FusionSolar app receives.
 import importlib
 import json
 import pathlib
-import sys
-import types
 
 import pytest
-
-ROOT = pathlib.Path(__file__).resolve().parents[1] / "custom_components"
-for name, path in [
-    ("custom_components", ROOT),
-    ("custom_components.fusionsolarplus", ROOT / "fusionsolarplus"),
-    ("custom_components.fusionsolarplus.api", ROOT / "fusionsolarplus" / "api"),
-    (
-        "custom_components.fusionsolarplus.api.devices",
-        ROOT / "fusionsolarplus" / "api" / "devices",
-    ),
-]:
-    module = types.ModuleType(name)
-    module.__path__ = [str(path)]
-    sys.modules.setdefault(name, module)
 
 charger_api = importlib.import_module(
     "custom_components.fusionsolarplus.api.devices.charger_api"
@@ -140,9 +124,7 @@ def test_query_signals_reads_values():
 
 
 def test_error_body_with_http_200_is_an_error():
-    client = Client(
-        {"get-config-info": Response({"code": 5, "description": "denied"})}
-    )
+    client = Client({"get-config-info": Response({"code": 5, "description": "denied"})})
     with pytest.raises(RuntimeError, match="denied"):
         charger_api._query_signals(client, "301", [20002])
 
@@ -294,7 +276,9 @@ def test_plans_that_do_not_come_back_are_restored_once():
     client = plan_client(
         {"switchOn": 1, "plans": PLANS},  # first read
         {"switchOn": 1, "plans": PLANS},  # second read
-        damaged, damaged, damaged,  # the three checks after the write
+        damaged,
+        damaged,
+        damaged,  # the three checks after the write
         {"switchOn": 1, "plans": PLANS},  # the check after the restore
     )
     with pytest.raises(RuntimeError, match="were restored"):
@@ -317,7 +301,9 @@ def test_a_failed_restore_is_reported_and_not_retried():
 
 
 def test_resending_the_real_plans_reproduces_the_apps_request():
-    real = json.loads((pathlib.Path(__file__).parent / "fixtures" / "real_plans.json").read_text())
+    real = json.loads(
+        (pathlib.Path(__file__).parent / "fixtures" / "real_plans.json").read_text()
+    )
     for stored, sent_by_app in zip(
         real["query_plan_response"]["plans"], real["app_config_plan_request_plans"]
     ):
@@ -359,3 +345,97 @@ def test_normalize_turns_nan_into_none():
     out = charger_api._normalize_charger_payload(raw)["value_map"]
     assert out[("302", 1)] is None
     assert out[("302", 2)] == -1.5
+
+
+def dn_client(children, dn_id):
+    return Client(
+        {
+            "organization/v1/tree": Response({"childList": children}),
+            "mo-details": Response({"data": {"mo": {"dnId": dn_id}}}),
+        }
+    )
+
+
+def test_dn_ids_are_looked_up_once_and_cached():
+    client = dn_client([{"elementId": 301}], 302)
+    assert charger_api._get_dn_ids(client, "NE=9") == ("301", "302")
+    assert charger_api._get_dn_ids(client, "NE=9") == ("301", "302")
+    assert len(client._session.calls) == 2
+
+
+@pytest.mark.parametrize(
+    "children, dn_id",
+    [
+        ([], 302),
+        ([{"nope": 1}], 302),
+        ([{"elementId": "abc"}], 302),
+        ([{"elementId": 301}], None),
+    ],
+)
+def test_unusable_dn_ids_raise_and_are_not_cached(children, dn_id):
+    client = dn_client(children, dn_id)
+    with pytest.raises(RuntimeError):
+        charger_api._get_dn_ids(client, "NE=9")
+    assert "NE=9" not in charger_api._DN_CACHE
+
+
+def test_more_than_one_connector_uses_the_first_and_warns_once():
+    client = dn_client([{"elementId": 301}, {"elementId": 305}], 302)
+    assert charger_api._get_dn_ids(client, "NE=9") == ("301", "302")
+    assert "connectors:NE=9" in charger_api._WARNED
+
+
+def test_a_signal_is_written_to_the_dn_the_whitelist_names(monkeypatch):
+    monkeypatch.setitem(charger_api.WRITABLE_SIGNALS, 99999, charger_api.CHARGER)
+    client = Client({"set-config-info": Response()})
+    charger_api.set_charger_setting(client, "NE=1", 99999, "1")
+    assert client._session.writes("set-config-info")[0][2]["json"]["dnId"] == 302
+
+
+def realtime_client():
+    return Client(
+        {
+            "get-realtime-info": Response({"301": [{"id": 1, "realValue": "5"}]}),
+            "list-charge-record": Response(
+                {"code": 0, "data": {"total": 0, "records": []}}
+            ),
+            "get-config-info": Response(
+                {
+                    "301": [{"id": 20002, "value": "0"}],
+                    "302": [{"id": 20001, "value": "11.0"}],
+                }
+            ),
+            "query-plan": Response({"switchOn": 0, "plans": PLANS}),
+        }
+    )
+
+
+def test_control_is_only_read_when_charger_control_is_on():
+    client = realtime_client()
+    data = charger_api.get_charger_data(client, "NE=1", "UTC")
+    assert data["control"] is None
+    called = [c[1].rsplit("/", 1)[-1] for c in client._session.calls]
+    assert "get-config-info" not in called and "query-plan" not in called
+
+    charger_api._HISTORY_CACHE.clear()
+    client = realtime_client()
+    data = charger_api.get_charger_data(client, "NE=1", "UTC", include_control=True)
+    assert data["control"]["schedule_on"] is False
+    assert data["control"]["settings"][20002] == "0"
+    assert data["control"]["settings"][20001] == "11.0"
+
+
+def test_a_failing_control_read_does_not_take_the_sensors_down():
+    client = realtime_client()
+    client._session.routes["get-config-info"] = Response(status=500)
+    data = charger_api.get_charger_data(client, "NE=1", "UTC", include_control=True)
+    assert data["control"] is None and data["value_map"]
+
+
+def test_clear_caches_forgets_one_charger():
+    charger_api._CONTROL_CACHE["NE=1"] = (1, {})
+    charger_api._WARNED.add("control:NE=1")
+    charger_api.clear_caches("NE=1")
+    assert "NE=1" not in charger_api._DN_CACHE
+    assert "NE=1" not in charger_api._CONTROL_CACHE
+    assert "control:NE=1" not in charger_api._WARNED

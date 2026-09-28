@@ -277,6 +277,50 @@ class FusionSolarPlusConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             errors={},
         )
 
+    async def async_step_reauth(self, entry_data):
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(self, user_input=None):
+        entry = self._get_reauth_entry()
+        errors = {}
+
+        if user_input:
+            password = user_input[CONF_PASSWORD]
+            try:
+                await self.hass.async_add_executor_job(
+                    partial(
+                        FusionSolarClient,
+                        entry.options.get(CONF_USERNAME, entry.data[CONF_USERNAME]),
+                        password,
+                        captcha_model_path=self.hass,
+                        huawei_subdomain=entry.options.get(
+                            CONF_SUBDOMAIN, entry.data.get(CONF_SUBDOMAIN, "uni001eu5")
+                        ),
+                    )
+                )
+            except AuthenticationException:
+                errors["base"] = "invalid_auth"
+            except FusionSolarRateLimit:
+                errors["base"] = "rate_limit"
+            except Exception as err:
+                _LOGGER.warning("FusionSolarPlus: reauthentication failed: %s", err)
+                errors["base"] = "unknown"
+            else:
+                options = entry.options
+                if CONF_PASSWORD in options:
+                    options = {**options, CONF_PASSWORD: password}
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data={**entry.data, CONF_PASSWORD: password},
+                    options=options,
+                )
+
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=vol.Schema({vol.Required(CONF_PASSWORD): str}),
+            errors=errors,
+        )
+
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):

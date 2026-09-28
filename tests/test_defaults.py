@@ -25,4 +25,8 @@ def test_charger_control_is_off_by_default():
 
 def test_scan_interval_bounds_are_sane():
     const = load_const()
-    assert const.MIN_SCAN_INTERVAL <= const.DEFAULT_SCAN_INTERVAL <= const.MAX_SCAN_INTERVAL
+    assert (
+        const.MIN_SCAN_INTERVAL
+        <= const.DEFAULT_SCAN_INTERVAL
+        <= const.MAX_SCAN_INTERVAL
+    )
