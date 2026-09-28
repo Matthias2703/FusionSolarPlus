@@ -14,6 +14,8 @@ from typing import Any
 from custom_components.fusionsolarplus.api.exceptions import FusionSolarException
 
 
+from ..values import finite_or_none
+
 def get_historical_data(
     client: Any,
     signal_ids: list[str],
@@ -238,7 +240,7 @@ def _normalize_signal_value(
 
     if unit not in (None, ""):
         try:
-            return float(raw_value)
+            return finite_or_none(float(raw_value))
         except (TypeError, ValueError):
             return None
 

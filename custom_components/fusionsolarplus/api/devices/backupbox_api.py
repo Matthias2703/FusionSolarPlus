@@ -7,6 +7,8 @@ from typing import Any
 from custom_components.fusionsolarplus.api.devices import inverter_api
 
 
+from ..values import finite_or_none
+
 def get_backupbox_data(client: Any, device_dn: str | None = None) -> dict:
     raw_data = inverter_api.get_real_time_data(client, device_dn)
     value_map: dict[int, Any] = {}
@@ -20,7 +22,7 @@ def get_backupbox_data(client: Any, device_dn: str | None = None) -> dict:
                 value_map[int(signal_id)] = None
                 continue
             try:
-                value_map[int(signal_id)] = float(raw_value)
+                value_map[int(signal_id)] = finite_or_none(float(raw_value))
             except (TypeError, ValueError):
                 value_map[int(signal_id)] = str(raw_value)
     return {"raw_data": raw_data, "value_map": value_map}

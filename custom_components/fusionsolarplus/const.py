@@ -4,6 +4,11 @@ CONF_USERNAME = "username"
 CONF_PASSWORD = "password"
 CONF_SUBDOMAIN = "subdomain"
 CONF_INSTALLER = "installer"
+CONF_SCAN_INTERVAL = "scan_interval"
+
+DEFAULT_SCAN_INTERVAL = 15  # seconds
+MIN_SCAN_INTERVAL = 10
+MAX_SCAN_INTERVAL = 3600
 
 CONF_DEVICE_TYPE = "device_type"
 CONF_DEVICE_ID = "device_id"

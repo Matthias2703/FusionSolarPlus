@@ -7,6 +7,8 @@ import time
 from datetime import datetime
 from typing import Any
 
+from ..values import finite_or_none
+
 _LOGGER = logging.getLogger(__name__)
 
 CONNECTOR = "connector"
@@ -266,7 +268,7 @@ def _normalize_charger_payload(raw_data: dict) -> dict:
                 value_map[(signal_type_id, int(signal_id))] = None
                 continue
             try:
-                value_map[(signal_type_id, int(signal_id))] = float(raw_value)
+                value_map[(signal_type_id, int(signal_id))] = finite_or_none(float(raw_value))
             except (TypeError, ValueError):
                 value_map[(signal_type_id, int(signal_id))] = raw_value
     return {"raw_data": raw_data, "value_map": value_map}

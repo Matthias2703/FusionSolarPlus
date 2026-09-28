@@ -9,6 +9,10 @@ from typing import Any
 from custom_components.fusionsolarplus.api.constants import MODULE_SIGNALS
 from custom_components.fusionsolarplus.api.exceptions import FusionSolarException
 
+from ..values import finite_or_none
+
+_LOGGER = logging.getLogger(__name__)
+
 
 def get_battery_ids(client: Any, plant_id) -> list:
     plant_flow = client.get_plant_flow(plant_id)
@@ -18,12 +22,12 @@ def get_battery_ids(client: Any, plant_id) -> list:
     for node in nodes:
         name = node.get("name", "")
         dev_ids = node.get("devIds")
-        logging.debug("Processing node: name=%r devIds=%r", name, dev_ids)
+        _LOGGER.debug("Processing node: name=%r devIds=%r", name, dev_ids)
         if "energy_store" in name:
             if isinstance(dev_ids, list) and dev_ids:
                 battery_ids.extend(dev_ids)
             else:
-                logging.warning(
+                _LOGGER.warning(
                     "Node with 'energy_store' in name but devIds is not a non-empty list: %r",
                     node,
                 )
@@ -134,7 +138,7 @@ def _signals_to_value_map(
             continue
 
         try:
-            values[int(signal_id)] = float(raw_value)
+            values[int(signal_id)] = finite_or_none(float(raw_value))
         except (TypeError, ValueError):
             values[int(signal_id)] = raw_value
 

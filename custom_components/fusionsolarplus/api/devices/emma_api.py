@@ -17,6 +17,8 @@ from typing import Any
 
 from custom_components.fusionsolarplus.api.devices import inverter_api
 
+from ..values import finite_or_none
+
 _LOGGER = logging.getLogger(__name__)
 
 # Config parameters change rarely (manual edits in FusionSolar). Realtime stays on
@@ -66,7 +68,7 @@ def get_emma_data(client: Any, device_dn: str | None = None) -> dict:
                 value_map[int(signal_id)] = None
                 continue
             try:
-                value_map[int(signal_id)] = float(raw_value)
+                value_map[int(signal_id)] = finite_or_none(float(raw_value))
             except (TypeError, ValueError):
                 value_map[int(signal_id)] = str(raw_value)
 

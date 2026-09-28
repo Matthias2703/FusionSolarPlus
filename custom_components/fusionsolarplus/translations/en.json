@@ -44,7 +44,8 @@
           "username": "Username",
           "password": "Password",
           "subdomain": "Subdomain",
-          "installer": "Enable installer access. By checking this checkbox I confirm that I have read the installer disclaimer."
+          "installer": "Enable installer access. By checking this checkbox I confirm that I have read the installer disclaimer.",
+          "scan_interval": "Update interval in seconds (10-3600)"
         }
       }
     }

@@ -174,6 +174,27 @@ class BatteryStatus:
         )
 
 
+# (connect, read) seconds. Without a timeout a stalled Huawei endpoint blocks the
+# login/refresh - and with it Home Assistant's startup - indefinitely.
+DEFAULT_TIMEOUT = (10, 30)
+
+
+class _TimeoutSession(requests.Session):
+    """requests.Session that applies DEFAULT_TIMEOUT unless a call sets its own."""
+
+    def request(self, *args, **kwargs):
+        kwargs.setdefault("timeout", DEFAULT_TIMEOUT)
+        return super().request(*args, **kwargs)
+
+
+def _numeric_or_zero(value) -> float:
+    """Portal placeholders such as "-" mean "no value"; real negatives must survive."""
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 def logged_in(func):
     """
     Decorator to make sure user is logged in.
@@ -186,7 +207,7 @@ def logged_in(func):
             _LOGGER.debug("No active session. Resetting session and logging in...")
 
             # reset the session
-            self._session = requests.Session()
+            self._session = _TimeoutSession()
             self._configure_session()
 
         try:
@@ -269,7 +290,7 @@ class FusionSolarClient:
         self._password = password
         self._captcha_verify_code = None
         if session is None:
-            self._session = requests.Session()
+            self._session = _TimeoutSession()
         else:
             self._session = session
 
@@ -850,10 +871,12 @@ class FusionSolarClient:
         """
         battery_stats = self.get_battery_status(battery_id)
 
-        # ensure that all values are numeric
+        # The portal reports "-" when a value is unavailable; anything else that
+        # parses as a number is kept, including negatives (battery discharging).
         for index in (2, 4, 5, 6, 7, 8):
-            if "-" in battery_stats[index]["realValue"]:
-                battery_stats[index]["realValue"] = 0
+            battery_stats[index]["realValue"] = _numeric_or_zero(
+                battery_stats[index]["realValue"]
+            )
 
         battery_status = BatteryStatus(
             state_of_charge=float(battery_stats[8]["realValue"]),

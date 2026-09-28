@@ -12,6 +12,10 @@ from custom_components.fusionsolarplus.const import (
     CONF_DEVICE_TYPE,
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
+    CONF_SCAN_INTERVAL,
+    DEFAULT_SCAN_INTERVAL,
+    MAX_SCAN_INTERVAL,
+    MIN_SCAN_INTERVAL,
 )
 from .api.client import FusionSolarClient
 from .api.exceptions import (
@@ -333,6 +337,15 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
                             self.config_entry.data.get(CONF_INSTALLER),
                         ),
                     ): bool,
+                    vol.Optional(
+                        CONF_SCAN_INTERVAL,
+                        default=self.config_entry.options.get(
+                            CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                        ),
+                    ): vol.All(
+                        vol.Coerce(int),
+                        vol.Range(min=MIN_SCAN_INTERVAL, max=MAX_SCAN_INTERVAL),
+                    ),
                 }
             ),
             description_placeholders={

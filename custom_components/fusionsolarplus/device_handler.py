@@ -18,7 +18,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .const import DOMAIN
+from .const import CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL, DOMAIN
 from .api.client import FusionSolarClient
 
 _LOGGER = logging.getLogger(__name__)
@@ -44,7 +44,11 @@ class BaseDeviceHandler:
             _LOGGER,
             name=f"{self.device_name} FusionSolar Data",
             update_method=self._async_get_data,
-            update_interval=timedelta(seconds=15),
+            update_interval=timedelta(
+                seconds=self.entry.options.get(
+                    CONF_SCAN_INTERVAL, DEFAULT_SCAN_INTERVAL
+                )
+            ),
         )
         await coordinator.async_config_entry_first_refresh()
         return coordinator
@@ -72,7 +76,12 @@ class BaseDeviceHandler:
                     if not is_active:
                         raise Exception("Login completed but session still not active")
                 return True
-            except Exception:
+            except Exception as err:
+                _LOGGER.warning(
+                    "%s: FusionSolar session check/login failed: %r",
+                    self.device_name,
+                    err,
+                )
                 return False
 
         async def create_new_client():
@@ -101,6 +110,13 @@ class BaseDeviceHandler:
                     raise Exception("API returned None response")
                 return response
             except Exception as err:
+                _LOGGER.warning(
+                    "%s: fetching data failed (attempt %d/%d): %r",
+                    self.device_name,
+                    attempt + 1,
+                    max_retries + 1,
+                    err,
+                )
                 if attempt < max_retries:
                     recovery_success = False
                     try:
@@ -109,15 +125,17 @@ class BaseDeviceHandler:
                             client.is_session_active
                         ):
                             recovery_success = True
-                    except Exception:
-                        pass
+                    except Exception as login_err:
+                        _LOGGER.debug("Re-login failed: %r", login_err)
 
                     if not recovery_success:
                         try:
-                            client = await create_new_client()
-                            recovery_success = True
-                        except Exception:
-                            pass
+                            new_client = await create_new_client()
+                            if new_client is not None:
+                                client = new_client
+                                recovery_success = True
+                        except Exception as client_err:
+                            _LOGGER.debug("Creating a new client failed: %r", client_err)
 
                     if recovery_success:
                         await asyncio.sleep(2)
