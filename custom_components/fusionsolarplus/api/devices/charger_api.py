@@ -7,7 +7,7 @@ import logging
 import threading
 import time
 from datetime import datetime
-from typing import Any
+from typing import Any, Callable
 
 from ..values import finite_or_none
 
@@ -47,10 +47,27 @@ HISTORY_RETRY_SECONDS = 60
 HISTORY_WINDOW_DAYS = 180
 CONTROL_TTL_SECONDS = 45
 
+# Plan handling: the plan list is replaced as a whole by config-plan, so it is
+# read twice before and re-checked after every write.
+PLAN_READ_PAUSE = 1.0
+PLAN_VERIFY_CHECKS = 3
+PLAN_VERIFY_PAUSE = 3.0
+PLAN_REQUIRED_FIELDS = (
+    "startTime",
+    "stopTime",
+    "chargeMode",
+    "repeatPeriod",
+    "maxChargePower",
+    "isValid",
+    "isRepeat",
+)
+PLAN_DERIVED_FIELDS = ("calculatedStartTime", "calculatedStopTime", "repeat", "valid")
+
 _DN_CACHE: dict[str, tuple[str, str]] = {}
 _HISTORY_CACHE: dict[str, tuple[float, dict]] = {}
 _CONTROL_CACHE: dict[str, tuple[float, dict]] = {}
 _WARNED: set[str] = set()
+_sleep = time.sleep
 _LOCK_GUARD = threading.Lock()
 
 
@@ -309,79 +326,145 @@ def _hhmm(value: str) -> int:
 
 
 def _plan_to_request(plan: dict) -> dict:
-    """Rebuild a plan the way the app sends it (adds the calculated* fields)."""
-    start, stop = plan["startTime"], plan["stopTime"]
-    if plan.get("isRepeat"):
-        calc_start, calc_stop = _hhmm(start), _hhmm(stop)
-    else:
-        calc_start = int(float(start)) // 1000
-        calc_stop = int(float(stop)) // 1000
+    """Rebuild a repeating plan the way the app sends it (adds the derived fields)."""
     return {
         **plan,
-        "calculatedStartTime": calc_start,
-        "calculatedStopTime": calc_stop,
+        "calculatedStartTime": _hhmm(plan["startTime"]),
+        "calculatedStopTime": _hhmm(plan["stopTime"]),
         "repeat": plan.get("isRepeat"),
         "valid": plan.get("isValid"),
     }
 
 
-def _plan_signature(plans: list[dict] | None) -> list[tuple]:
+def _plan_signature(plans: list[dict] | None) -> list[str]:
+    """Every field the cloud stores, except the ones derived from them."""
     return sorted(
-        (
-            str(p.get("startTime")),
-            str(p.get("stopTime")),
-            p.get("chargeMode"),
-            p.get("repeatPeriod"),
-            bool(p.get("isValid")),
-            bool(p.get("isRepeat")),
+        json.dumps(
+            {k: v for k, v in p.items() if k not in PLAN_DERIVED_FIELDS},
+            sort_keys=True,
         )
         for p in plans or []
     )
 
 
-def set_charger_schedule_enabled(client: Any, device_dn: str, enabled: bool) -> None:
+def _check_plans_can_be_resent(plans: list[dict]) -> None:
+    """Refuse plans we cannot reproduce exactly (one-time plans, missing fields)."""
+    if not plans:
+        raise ValueError(
+            "No charging plans found - refusing to switch a schedule that has none"
+        )
+    for plan in plans:
+        missing = [f for f in PLAN_REQUIRED_FIELDS if f not in plan]
+        if missing:
+            raise ValueError(f"Charging plan lacks {missing}; change the mode in the app")
+        if not plan["isRepeat"]:
+            raise ValueError(
+                "A one-time charging plan exists; change the mode in the app instead"
+            )
+
+
+def _read_plans_stable(client: Any, charger_dn_id: str, first: dict) -> dict:
+    """Read the plans a second time and insist both reads agree and are complete."""
+    _sleep(PLAN_READ_PAUSE)
+    second = _query_plan(client, charger_dn_id)
+    for body in (first, second):
+        if not isinstance(body.get("plans"), list):
+            raise RuntimeError("query-plan returned no plan list - not touching the plans")
+    if _truthy(first["switchOn"]) != _truthy(second["switchOn"]) or _plan_signature(
+        first["plans"]
+    ) != _plan_signature(second["plans"]):
+        raise RuntimeError("Charging plans changed between two reads - not touching them")
+    return second
+
+
+def _plans_match(client: Any, charger_dn_id: str, expected: list[dict]) -> bool:
+    """True once the cloud reports exactly `expected`; retries while it settles."""
+    for _ in range(PLAN_VERIFY_CHECKS):
+        _sleep(PLAN_VERIFY_PAUSE)
+        try:
+            after = _query_plan(client, charger_dn_id)
+        except Exception as err:
+            _LOGGER.warning("Could not re-read the charging plans: %r", err)
+            continue
+        if _plan_signature(after.get("plans")) == _plan_signature(expected):
+            return True
+    return False
+
+
+def _write_plans(client: Any, charger_dn_id: str, plans: list[dict], on: bool) -> None:
+    url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/charger/plan/config-plan"
+    payload = {
+        "plans": [_plan_to_request(p) for p in plans],
+        "switchOn": 1 if on else 0,
+        "accountId": "",
+        "dnId": int(charger_dn_id),
+    }
+    _json(client._session.post(url=url, json=payload))
+
+
+def set_charger_schedule_enabled(
+    client: Any,
+    device_dn: str,
+    enabled: bool,
+    backup: Callable[[str, list[dict], bool], None] | None = None,
+) -> None:
     """Switch the charging schedule on/off, resending the existing plans unchanged.
 
-    config-plan replaces the whole plan list, so the current plans are read
-    first, sent back as they are (only `switchOn` changes) and compared with a
-    second read afterwards. Nothing is written if the schedule is already in
-    the requested state.
+    config-plan replaces the whole plan list, so nothing is written unless two
+    reads agree on a complete list of repeating plans. The plans are logged
+    (WARNING) and handed to `backup` first, sent back as they are (only
+    `switchOn` changes) and compared field by field afterwards; if they do not
+    come back, one restore attempt is made. Nothing is written if the schedule
+    is already in the requested state.
     """
     with _client_lock(client):
         client.keep_alive()
         _, charger_dn_id = _get_dn_ids(client, device_dn)
-        current = _query_plan(client, charger_dn_id)
-        if _truthy(current["switchOn"]) == enabled:
+        first = _query_plan(client, charger_dn_id)
+        if _truthy(first["switchOn"]) == enabled:
             return
 
-        plans = current.get("plans") or []
-        if not plans and enabled:
-            raise ValueError(
-                "No charging plans returned - refusing to enable an empty schedule"
-            )
-        # Logged so the plans can be restored by hand if anything ever goes wrong.
-        _LOGGER.info(
-            "Charging plans before switching the schedule %s: %s",
+        current = _read_plans_stable(client, charger_dn_id, first)
+        plans = current["plans"]
+        was_on = _truthy(current["switchOn"])
+        _check_plans_can_be_resent(plans)
+
+        _LOGGER.warning(
+            "Charging plans before switching the schedule %s (kept as a backup): %s",
             "on" if enabled else "off",
             json.dumps(plans),
         )
+        if backup is not None:
+            try:
+                backup(device_dn, plans, was_on)
+            except Exception as err:
+                _LOGGER.error("Could not store the charging plan backup: %r", err)
 
-        url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/charger/plan/config-plan"
-        payload = {
-            "plans": [_plan_to_request(p) for p in plans],
-            "switchOn": 1 if enabled else 0,
-            "accountId": "",
-            "dnId": int(charger_dn_id),
-        }
         try:
-            _json(client._session.post(url=url, json=payload))
-            after = _query_plan(client, charger_dn_id)
+            _write_plans(client, charger_dn_id, plans, enabled)
         finally:
             invalidate_control_cache(device_dn)
-        if _plan_signature(after.get("plans")) != _plan_signature(plans):
-            raise RuntimeError(
-                "Charging plans differ after the write; the previous plans are in the log"
+        if _plans_match(client, charger_dn_id, plans):
+            return
+
+        _LOGGER.error("Charging plans differ after the write, restoring the previous plans")
+        try:
+            _write_plans(client, charger_dn_id, plans, was_on)
+            restored = _plans_match(client, charger_dn_id, plans)
+        except Exception as err:
+            _LOGGER.error("Restoring the charging plans failed: %r", err)
+            restored = False
+        finally:
+            invalidate_control_cache(device_dn)
+        raise RuntimeError(
+            "Charging plans differ after the write; "
+            + (
+                "the previous plans were restored"
+                if restored
+                else "restoring failed, check the plans in the FusionSolar app "
+                "(the previous plans are in the log and the plan backup)"
             )
+        )
 
 
 def _normalize_charger_payload(raw_data: dict) -> dict:

@@ -13,6 +13,7 @@ from homeassistant.helpers.update_coordinator import (
 
 from ...device_handler import BaseDeviceHandler
 from ...const import DOMAIN
+from .backup import make_plan_backup
 from .control import (
     MAX_ATTEMPTS,
     ChargerSettingEntity,
@@ -133,14 +134,15 @@ class FusionSolarChargingModeSelect(CoordinatorEntity, SelectEntity):
         first succeeded the schedule stays on, which is why the error says so.
         """
         client = self.hass.data[DOMAIN][self._entry_id]
+        backup = make_plan_backup(self.hass)
         if option == MODE_SCHEDULED:
-            client.set_charger_schedule_enabled(self._device_id, True)
+            client.set_charger_schedule_enabled(self._device_id, True, backup)
             return
         client.set_charger_working_mode(
             self._device_id, "1" if option == MODE_PV_SURPLUS else "0"
         )
         try:
-            client.set_charger_schedule_enabled(self._device_id, False)
+            client.set_charger_schedule_enabled(self._device_id, False, backup)
         except Exception as err:
             raise HomeAssistantError(
                 f"The working mode was set, but switching the schedule off failed: {err}"

@@ -829,8 +829,10 @@ class FusionSolarClient:
         charger_api.set_charger_setting(self, device_dn, signal_id, value)
 
     @logged_in
-    def set_charger_schedule_enabled(self, device_dn: str, enabled: bool) -> None:
-        charger_api.set_charger_schedule_enabled(self, device_dn, enabled)
+    def set_charger_schedule_enabled(
+        self, device_dn: str, enabled: bool, backup=None
+    ) -> None:
+        charger_api.set_charger_schedule_enabled(self, device_dn, enabled, backup)
 
     @logged_in
     def get_pv_info(

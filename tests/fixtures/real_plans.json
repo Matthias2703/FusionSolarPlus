@@ -1,0 +1,15 @@
+{
+  "note": "Captured from the FusionSolar app (Europe/Berlin, CEST): the cloud stores UTC, so 17:00 local is 15:00 here.",
+  "query_plan_response": {
+    "switchOn": 0,
+    "isSupportMaxPower": true,
+    "plans": [
+      {"isValid": true, "isRepeat": true, "repeatPeriod": 62, "startTime": "15:00", "stopTime": "04:00", "chargeMode": 0, "maxChargePower": 11.0},
+      {"isValid": true, "isRepeat": true, "repeatPeriod": 127, "startTime": "05:00", "stopTime": "14:00", "chargeMode": 1, "maxChargePower": 11.0}
+    ]
+  },
+  "app_config_plan_request_plans": [
+    {"chargeMode": 0, "isRepeat": true, "isValid": true, "maxChargePower": 11.0, "repeatPeriod": 62, "startTime": "15:00", "stopTime": "04:00", "calculatedStartTime": 1500, "calculatedStopTime": 400, "repeat": true, "valid": true},
+    {"chargeMode": 1, "isRepeat": true, "isValid": true, "maxChargePower": 11.0, "repeatPeriod": 127, "startTime": "05:00", "stopTime": "14:00", "calculatedStartTime": 500, "calculatedStopTime": 1400, "repeat": true, "valid": true}
+  ]
+}

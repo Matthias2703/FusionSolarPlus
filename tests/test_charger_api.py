@@ -105,12 +105,13 @@ class Client:
 
 
 @pytest.fixture(autouse=True)
-def fresh_state():
+def fresh_state(monkeypatch):
     charger_api._DN_CACHE.clear()
     charger_api._HISTORY_CACHE.clear()
     charger_api._CONTROL_CACHE.clear()
     charger_api._WARNED.clear()
     charger_api._DN_CACHE["NE=1"] = ("301", "302")
+    monkeypatch.setattr(charger_api, "_sleep", lambda seconds: None)
 
 
 def test_finite_or_none():
@@ -183,47 +184,144 @@ def test_settings_are_written_to_the_connector_dn():
     assert sent == {"changeValues": [{"id": "20002", "value": "1"}], "dnId": 301}
 
 
+def plan_client(*states, config_plan=None):
+    """A client whose query-plan answers `states` in order, then repeats the last."""
+    queue = list(states)
+
+    def answer():
+        body = queue.pop(0) if len(queue) > 1 else queue[0]
+        return Response(body)
+
+    return Client({"query-plan": answer, "config-plan": config_plan or Response()})
+
+
 def test_schedule_write_resends_the_plans_and_changes_only_switch_on():
-    state = {"switchOn": 1, "plans": PLANS}
-    client = Client(
-        {
-            "query-plan": lambda: Response(state),
-            "config-plan": Response(),
-        }
-    )
+    client = plan_client({"switchOn": 1, "plans": PLANS})
     charger_api.set_charger_schedule_enabled(client, "NE=1", False)
-    payload = client._session.writes("config-plan")[0][2]["json"]
+    writes = client._session.writes("config-plan")
+    assert len(writes) == 1
+    payload = writes[0][2]["json"]
     assert payload["switchOn"] == 0 and payload["dnId"] == 302
     assert [p["startTime"] for p in payload["plans"]] == ["07:00", "17:00"]
 
 
 def test_schedule_write_is_skipped_when_already_in_that_state():
-    client = Client({"query-plan": Response({"switchOn": 0, "plans": PLANS})})
+    client = plan_client({"switchOn": 0, "plans": PLANS})
     charger_api.set_charger_schedule_enabled(client, "NE=1", False)
     assert client._session.writes("config-plan") == []
 
 
-def test_empty_plans_are_never_enabled_but_can_be_switched_off():
-    client = Client({"query-plan": Response({"switchOn": 0, "plans": []})})
+@pytest.mark.parametrize(
+    "state, enabled",
+    [
+        ({"switchOn": 0, "plans": []}, True),
+        ({"switchOn": 1, "plans": []}, False),
+    ],
+)
+def test_an_empty_plan_list_is_never_written(state, enabled):
+    client = plan_client(state)
     with pytest.raises(ValueError):
-        charger_api.set_charger_schedule_enabled(client, "NE=1", True)
-    client = Client(
-        {"query-plan": Response({"switchOn": 1, "plans": []}), "config-plan": Response()}
+        charger_api.set_charger_schedule_enabled(client, "NE=1", enabled)
+    assert client._session.writes("config-plan") == []
+
+
+def test_a_reply_without_a_plan_list_is_never_written():
+    client = plan_client({"switchOn": 1})
+    with pytest.raises(RuntimeError, match="no plan list"):
+        charger_api.set_charger_schedule_enabled(client, "NE=1", False)
+    assert client._session.writes("config-plan") == []
+
+
+def test_plans_that_change_between_the_two_reads_are_never_written():
+    client = plan_client(
+        {"switchOn": 1, "plans": PLANS}, {"switchOn": 1, "plans": PLANS[:1]}
     )
-    charger_api.set_charger_schedule_enabled(client, "NE=1", False)
+    with pytest.raises(RuntimeError, match="between two reads"):
+        charger_api.set_charger_schedule_enabled(client, "NE=1", False)
+    assert client._session.writes("config-plan") == []
+
+
+def test_one_time_plans_are_never_resent():
+    one_time = {**PLANS[0], "isRepeat": False, "startTime": "1790000000000"}
+    client = plan_client({"switchOn": 1, "plans": [one_time]})
+    with pytest.raises(ValueError, match="one-time"):
+        charger_api.set_charger_schedule_enabled(client, "NE=1", False)
+    assert client._session.writes("config-plan") == []
+
+
+def test_plans_with_missing_fields_are_never_resent():
+    broken = {k: v for k, v in PLANS[0].items() if k != "maxChargePower"}
+    client = plan_client({"switchOn": 1, "plans": [broken]})
+    with pytest.raises(ValueError, match="maxChargePower"):
+        charger_api.set_charger_schedule_enabled(client, "NE=1", False)
+    assert client._session.writes("config-plan") == []
+
+
+def test_the_backup_is_taken_before_the_write_and_a_failing_backup_does_not_block():
+    order = []
+    client = plan_client({"switchOn": 1, "plans": PLANS})
+    real_post = client._session.post
+
+    def post(url, **kwargs):
+        if url.endswith("config-plan"):
+            order.append("write")
+        return real_post(url, **kwargs)
+
+    client._session.post = post
+    charger_api.set_charger_schedule_enabled(
+        client, "NE=1", False, backup=lambda dn, plans, on: order.append(("backup", on))
+    )
+    assert order == [("backup", True), "write"]
+
+    client = plan_client({"switchOn": 1, "plans": PLANS})
+
+    def failing(dn, plans, on):
+        raise OSError("disk full")
+
+    charger_api.set_charger_schedule_enabled(client, "NE=1", False, backup=failing)
     assert client._session.writes("config-plan")
 
 
-def test_schedule_write_reports_plans_that_changed_underneath():
-    answers = iter(
-        [
-            Response({"switchOn": 1, "plans": PLANS}),
-            Response({"switchOn": 0, "plans": PLANS[:1]}),
-        ]
+def test_a_change_only_in_the_charge_power_is_detected():
+    changed = [{**PLANS[0], "maxChargePower": 10.0}, PLANS[1]]
+    assert charger_api._plan_signature(PLANS) != charger_api._plan_signature(changed)
+    derived = [{**p, "calculatedStartTime": 1, "repeat": True} for p in PLANS]
+    assert charger_api._plan_signature(PLANS) == charger_api._plan_signature(derived)
+
+
+def test_plans_that_do_not_come_back_are_restored_once():
+    damaged = {"switchOn": 0, "plans": PLANS[:1]}
+    client = plan_client(
+        {"switchOn": 1, "plans": PLANS},  # first read
+        {"switchOn": 1, "plans": PLANS},  # second read
+        damaged, damaged, damaged,  # the three checks after the write
+        {"switchOn": 1, "plans": PLANS},  # the check after the restore
     )
-    client = Client({"query-plan": lambda: next(answers), "config-plan": Response()})
-    with pytest.raises(RuntimeError, match="differ"):
+    with pytest.raises(RuntimeError, match="were restored"):
         charger_api.set_charger_schedule_enabled(client, "NE=1", False)
+    writes = client._session.writes("config-plan")
+    assert len(writes) == 2
+    assert writes[0][2]["json"]["switchOn"] == 0
+    assert writes[1][2]["json"]["switchOn"] == 1  # back to the previous state
+    assert writes[1][2]["json"]["plans"] == writes[0][2]["json"]["plans"]
+
+
+def test_a_failed_restore_is_reported_and_not_retried():
+    damaged = {"switchOn": 0, "plans": PLANS[:1]}
+    client = plan_client(
+        {"switchOn": 1, "plans": PLANS}, {"switchOn": 1, "plans": PLANS}, damaged
+    )
+    with pytest.raises(RuntimeError, match="restoring failed"):
+        charger_api.set_charger_schedule_enabled(client, "NE=1", False)
+    assert len(client._session.writes("config-plan")) == 2
+
+
+def test_resending_the_real_plans_reproduces_the_apps_request():
+    real = json.loads((pathlib.Path(__file__).parent / "fixtures" / "real_plans.json").read_text())
+    for stored, sent_by_app in zip(
+        real["query_plan_response"]["plans"], real["app_config_plan_request_plans"]
+    ):
+        assert charger_api._plan_to_request(stored) == sent_by_app
 
 
 def test_a_failed_write_still_invalidates_the_control_cache():
