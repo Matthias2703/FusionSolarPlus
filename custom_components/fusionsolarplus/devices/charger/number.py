@@ -88,7 +88,7 @@ class FusionSolarChargerNumber(ChargerSettingEntity, NumberEntity):
 
     @property
     def native_value(self) -> float | None:
-        raw = self.raw_value
+        raw = self.display_value
         try:
             return float(raw) if raw is not None else None
         except ValueError:
@@ -96,6 +96,11 @@ class FusionSolarChargerNumber(ChargerSettingEntity, NumberEntity):
 
     async def async_set_native_value(self, value: float) -> None:
         value = round(value, 1)
-        await self._write(
-            str(value), lambda raw: abs(float(raw) - value) < 0.05
-        )
+
+        def same(raw: str) -> bool:
+            try:
+                return abs(float(raw) - value) < 0.05
+            except ValueError:
+                return False
+
+        await self._write(str(value), same)

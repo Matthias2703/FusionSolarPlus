@@ -27,7 +27,7 @@ class ChargerDeviceHandler(BaseDeviceHandler):
     async def _async_get_data(self) -> Dict[str, Any]:
         async def fetch_charger_data(client):
             return await self.hass.async_add_executor_job(
-                client.get_charger_data, self.device_id
+                client.get_charger_data, self.device_id, self.hass.config.time_zone
             )
 
         return await self._get_client_and_retry(fetch_charger_data)
@@ -102,13 +102,13 @@ class ChargerDeviceHandler(BaseDeviceHandler):
             return extract
 
         def to_time(value):
-            return datetime.fromtimestamp(int(value), tz=timezone.utc)
+            return datetime.fromtimestamp(int(float(value)), tz=timezone.utc)
 
         mode_names = {0: "Normal charge", 1: "PV surplus"}
         specs = [
-            ("history_total", "Charge Sessions (6 Months)", lambda h: h.get("total"), None, None, SensorStateClass.TOTAL_INCREASING),
+            ("history_total", "Charge Sessions (180 Days)", lambda h: h.get("total"), None, None, SensorStateClass.MEASUREMENT),
             ("history_last_energy", "Last Session Energy", last("totalPower", float), "kWh", SensorDeviceClass.ENERGY, None),
-            ("history_last_duration", "Last Session Duration", last("totalTime", int), "min", SensorDeviceClass.DURATION, None),
+            ("history_last_duration", "Last Session Duration", last("totalTime", lambda v: int(float(v))), "min", SensorDeviceClass.DURATION, None),
             ("history_last_start", "Last Session Start", last("startTime", to_time), None, SensorDeviceClass.TIMESTAMP, None),
             ("history_last_mode", "Last Session Mode", last("chargeMode", lambda v: mode_names.get(int(v), str(v))), None, None, None),
         ]
@@ -254,6 +254,13 @@ class FusionSolarChargerSettingSensor(CoordinatorEntity, SensorEntity):
         self._attr_device_info = device_info
         self._attr_unique_id = f"{device_id}_{key}_sensor"
         self._attr_native_unit_of_measurement = unit
+        if unit == "kW":
+            self._attr_device_class = SensorDeviceClass.POWER
+        self.entity_id = generate_entity_id(
+            ENTITY_ID_FORMAT,
+            f"fsp_{device_id}_{name.lower().replace(' ', '_')}",
+            hass=coordinator.hass,
+        )
 
     @property
     def native_value(self):

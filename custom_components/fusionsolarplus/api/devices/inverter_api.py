@@ -16,6 +16,7 @@ from custom_components.fusionsolarplus.api.exceptions import FusionSolarExceptio
 
 from ..values import finite_or_none
 
+
 def get_historical_data(
     client: Any,
     signal_ids: list[str],

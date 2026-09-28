@@ -32,7 +32,7 @@ class FusionSolarDynamicPowerSwitch(ChargerSettingEntity, SwitchEntity):
 
     @property
     def is_on(self) -> bool | None:
-        raw = self.raw_value
+        raw = self.display_value
         return None if raw is None else raw == "1"
 
     async def async_turn_on(self, **kwargs) -> None:

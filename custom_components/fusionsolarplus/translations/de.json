@@ -49,5 +49,25 @@
         }
       }
     }
+  },
+  "entity": {
+    "select": {
+      "charging_mode": {
+        "name": "Lademodus",
+        "state": {
+          "charge_now": "Sofort laden",
+          "pv_surplus": "PV-Überschuss",
+          "scheduled": "Zeitgesteuert"
+        }
+      },
+      "cable_lock": {
+        "name": "Kabelverriegelung",
+        "state": {
+          "manual": "Manuell verriegeln",
+          "lock_when_charging": "Beim Laden verriegeln",
+          "lock_after_insert": "Nach dem Einstecken verriegeln"
+        }
+      }
+    }
   }
 }

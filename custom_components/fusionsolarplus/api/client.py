@@ -18,6 +18,7 @@ from typing import Any, Optional
 import re
 import requests
 
+from .values import finite_or_none
 from .exceptions import (
     AuthenticationException,
     CaptchaRequiredException,
@@ -190,7 +191,7 @@ class _TimeoutSession(requests.Session):
 def _numeric_or_zero(value) -> float:
     """Portal placeholders such as "-" mean "no value"; real negatives must survive."""
     try:
-        return float(value)
+        return finite_or_none(float(value)) or 0.0
     except (TypeError, ValueError):
         return 0.0
 
@@ -816,8 +817,8 @@ class FusionSolarClient:
         return inverter_api.get_inverter_data(self, device_dn)
 
     @logged_in
-    def get_charger_data(self, device_dn: str = None) -> dict:
-        return charger_api.get_charger_data(self, device_dn)
+    def get_charger_data(self, device_dn: str = None, time_zone: str = "UTC") -> dict:
+        return charger_api.get_charger_data(self, device_dn, time_zone)
 
     @logged_in
     def set_charger_working_mode(self, device_dn: str, value: str) -> None:

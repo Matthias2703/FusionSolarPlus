@@ -9,6 +9,7 @@ from custom_components.fusionsolarplus.api.devices import inverter_api
 
 from ..values import finite_or_none
 
+
 def get_powersensor_data(client: Any, device_dn: str | None = None) -> dict:
     raw_data = inverter_api.get_real_time_data(client, device_dn)
     value_map: dict[int, Any] = {}

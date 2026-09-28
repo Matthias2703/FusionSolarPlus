@@ -29,7 +29,7 @@ class NumberHandlerFactory:
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ):
-    """Set up select platform."""
+    """Set up number platform."""
     device_name = entry.data.get("device_name")
     device_info = hass.data[DOMAIN].get(f"{entry.entry_id}_device_info")
 

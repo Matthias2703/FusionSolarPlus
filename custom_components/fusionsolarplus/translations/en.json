@@ -49,5 +49,25 @@
         }
       }
     }
+  },
+  "entity": {
+    "select": {
+      "charging_mode": {
+        "name": "Charging mode",
+        "state": {
+          "charge_now": "Charge now",
+          "pv_surplus": "PV surplus",
+          "scheduled": "Scheduled"
+        }
+      },
+      "cable_lock": {
+        "name": "Cable lock",
+        "state": {
+          "manual": "Manual lock",
+          "lock_when_charging": "Lock when charging",
+          "lock_after_insert": "Lock after being inserted"
+        }
+      }
+    }
   }
 }

@@ -1,4 +1,5 @@
 import logging
+from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.device_registry import async_get as async_get_device_registry
 from .api.client import FusionSolarClient
 from functools import partial
@@ -52,6 +53,8 @@ async def async_setup_entry(hass, entry):
 
         hass.data[DOMAIN][f"{entry.entry_id}_coordinator"] = coordinator
         hass.data[DOMAIN][f"{entry.entry_id}_sensor_handler"] = sensor_handler
+    except ConfigEntryNotReady:
+        raise
     except Exception as e:
         _LOGGER.error("Failed to create coordinator for device %s: %s", device_name, e)
         return False
@@ -79,6 +82,7 @@ async def async_unload_entry(hass, entry):
 
     if unload_ok:
         hass.data[DOMAIN].pop(f"{entry.entry_id}_coordinator", None)
+        hass.data[DOMAIN].pop(f"{entry.entry_id}_device_info", None)
         hass.data[DOMAIN].pop(f"{entry.entry_id}_sensor_handler", None)
         hass.data[DOMAIN].pop(entry.entry_id, None)
 

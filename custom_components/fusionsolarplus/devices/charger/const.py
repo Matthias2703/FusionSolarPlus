@@ -228,9 +228,9 @@ CHARGER_DEVICE_SIGNALS = [
 #   schedule off + Working Mode 1       -> "PV surplus" (PV Power Preferred)
 # Working Mode is signal 20002 on the charger dn; the schedule is switched with
 # charger/plan/config-plan (switchOn 0/1). See api/devices/charger_api.py.
-MODE_CHARGE_NOW = "Charge now"
-MODE_PV_SURPLUS = "PV surplus"
-MODE_SCHEDULED = "Scheduled"
+MODE_CHARGE_NOW = "charge_now"
+MODE_PV_SURPLUS = "pv_surplus"
+MODE_SCHEDULED = "scheduled"
 CHARGING_MODE_OPTIONS = [MODE_CHARGE_NOW, MODE_PV_SURPLUS, MODE_SCHEDULED]
 
 # --- Writable settings (signal ids captured from the app's config screens) --
@@ -241,8 +241,9 @@ SIGNAL_CONNECTOR_LOCK = 20005
 SIGNAL_DYNAMIC_POWER = 538976529
 SIGNAL_POWER_LIMIT = 20001
 
+# cloud value -> option key (labels live in translations/*.json)
 CONNECTOR_LOCK_OPTIONS = {
-    "0": "Manual lock",
-    "1": "Lock when charging",
-    "2": "Lock after being inserted",
+    "0": "manual",
+    "1": "lock_when_charging",
+    "2": "lock_after_insert",
 }
