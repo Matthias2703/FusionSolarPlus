@@ -79,8 +79,14 @@ def _query_plan(client: Any, charger_dn_id: str) -> dict:
     return r.json()
 
 
-def _query_signals(client: Any, dn_id: str, signal_ids: list[int]) -> dict[int, str]:
-    """Read config signals; returns {signal_id: value as string}."""
+def _query_signals(
+    client: Any, dn_id: str, signal_ids: list[int]
+) -> tuple[dict[int, str], dict[int, tuple[float, float]]]:
+    """Read config signals; returns ({id: value}, {id: (min, max)}).
+
+    The ranges are what the cloud allows for this installation, e.g. the
+    charge power limit tops out at 11 kW unless the site is approved for more.
+    """
     url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/device/get-config-info"
     payload = {
         "conditions": [{"dnId": int(dn_id), "queryAll": False, "signals": signal_ids}],
@@ -89,13 +95,21 @@ def _query_signals(client: Any, dn_id: str, signal_ids: list[int]) -> dict[int, 
     r = client._session.post(url=url, json=payload)
     r.raise_for_status()
     values: dict[int, str] = {}
+    ranges: dict[int, tuple[float, float]] = {}
     for signals in r.json().values():
         if not isinstance(signals, list):
             continue
         for signal in signals:
             if signal.get("id") in signal_ids and signal.get("value") is not None:
-                values[int(signal["id"])] = str(signal["value"])
-    return values
+                signal_id = int(signal["id"])
+                values[signal_id] = str(signal["value"])
+                limits = signal.get("ranges") or []
+                if limits:
+                    ranges[signal_id] = (
+                        float(limits[0]["minValue"]),
+                        float(limits[0]["maxValue"]),
+                    )
+    return values, ranges
 
 
 def _query_charge_history(client: Any, charger_dn_id: str) -> dict:
@@ -153,9 +167,12 @@ def get_charger_data(client: Any, device_dn: str | None = None) -> dict:
             s for s, dn in {**WRITABLE_SIGNALS, **READONLY_SIGNALS}.items() if dn == CONNECTOR
         ]
         charger_signals = [s for s, dn in WRITABLE_SIGNALS.items() if dn == CHARGER]
-        settings = _query_signals(client, dn_id_1, connector_signals)
-        settings.update(_query_signals(client, dn_id_2, charger_signals))
+        settings, ranges = _query_signals(client, dn_id_1, connector_signals)
+        charger_settings, charger_ranges = _query_signals(client, dn_id_2, charger_signals)
+        settings.update(charger_settings)
+        ranges.update(charger_ranges)
         data["control"] = {
+            "ranges": ranges,
             "working_mode": settings.get(WORKING_MODE_SIGNAL_ID),
             "schedule_on": bool(_query_plan(client, dn_id_2).get("switchOn")),
             "settings": settings,

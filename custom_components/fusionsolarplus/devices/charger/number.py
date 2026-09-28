@@ -1,4 +1,4 @@
-"""Number platform for Charger devices (PV surplus thresholds, power limit)."""
+"""Number platform for Charger devices (charge power limit)."""
 
 from typing import List
 
@@ -9,9 +9,12 @@ from ...device_handler import BaseDeviceHandler
 from .control import ChargerSettingEntity
 from .const import SIGNAL_POWER_LIMIT
 
-# (signal id, unique key, name, min kW, max kW). The range is the one the app
-# reports. The two PV values (20006/20007) are not editable on purpose: the
-# app flags them displayExp=false, i.e. internal defaults it never shows.
+# (signal id, unique key, name, fallback min kW, fallback max kW). The real
+# range is read from the cloud on every refresh, so a site approved for 22 kW
+# gets 22 and everyone else stays at what the installer allowed; the fallback
+# only applies until the first read. The two PV values (20006/20007) are not
+# editable on purpose: the app flags them displayExp=false, i.e. internal
+# defaults it never shows.
 NUMBERS = [
     (SIGNAL_POWER_LIMIT, "charge_power_limit", "Power Limit", 4.1, 11.0),
 ]
@@ -68,8 +71,20 @@ class FusionSolarChargerNumber(ChargerSettingEntity, NumberEntity):
             key,
             name,
         )
-        self._attr_native_min_value = low
-        self._attr_native_max_value = high
+        self._fallback_range = (low, high)
+
+    @property
+    def _range(self) -> tuple[float, float]:
+        control = (self.coordinator.data or {}).get("control") or {}
+        return control.get("ranges", {}).get(self._signal_id, self._fallback_range)
+
+    @property
+    def native_min_value(self) -> float:
+        return self._range[0]
+
+    @property
+    def native_max_value(self) -> float:
+        return self._range[1]
 
     @property
     def native_value(self) -> float | None:
