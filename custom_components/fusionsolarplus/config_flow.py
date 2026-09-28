@@ -12,7 +12,9 @@ from custom_components.fusionsolarplus.const import (
     CONF_DEVICE_TYPE,
     CONF_DEVICE_ID,
     CONF_DEVICE_NAME,
+    CONF_CHARGER_CONTROL,
     CONF_SCAN_INTERVAL,
+    DEFAULT_CHARGER_CONTROL,
     DEFAULT_SCAN_INTERVAL,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
@@ -286,10 +288,22 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         if user_input is not None:
             return self.async_create_entry(title="", data=user_input)
 
+        extra = {}
+        if self.config_entry.data.get(CONF_DEVICE_TYPE) == DEVICE_TYPE_CHARGER:
+            extra[
+                vol.Optional(
+                    CONF_CHARGER_CONTROL,
+                    default=self.config_entry.options.get(
+                        CONF_CHARGER_CONTROL, DEFAULT_CHARGER_CONTROL
+                    ),
+                )
+            ] = bool
+
         return self.async_show_form(
             step_id="init",
             data_schema=vol.Schema(
                 {
+                    **extra,
                     vol.Optional(
                         CONF_USERNAME,
                         default=self.config_entry.options.get(

@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import CONF_CHARGER_CONTROL, DEFAULT_CHARGER_CONTROL, DOMAIN
 from .devices.inverter.switch import InverterSwitchHandler
 from .devices.charger.switch import ChargerSwitchHandler
 from .device_handler import BaseDeviceHandler
@@ -27,7 +27,9 @@ class SwitchHandlerFactory:
 
         if device_type == "Inverter" and installer:
             return InverterSwitchHandler(hass, entry, device_info)
-        elif device_type == "Charger":
+        elif device_type == "Charger" and entry.options.get(
+            CONF_CHARGER_CONTROL, DEFAULT_CHARGER_CONTROL
+        ):
             return ChargerSwitchHandler(hass, entry, device_info)
         else:
             return None

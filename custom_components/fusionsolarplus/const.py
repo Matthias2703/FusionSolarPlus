@@ -5,6 +5,12 @@ CONF_PASSWORD = "password"
 CONF_SUBDOMAIN = "subdomain"
 CONF_INSTALLER = "installer"
 CONF_SCAN_INTERVAL = "scan_interval"
+CONF_CHARGER_CONTROL = "charger_control"
+
+# Whether charger entries expose the entities that write to the wallbox (mode, cable
+# lock, power limit, dynamic power). On in this fork; a change offered upstream
+# should flip this to False so nobody gets write access without opting in.
+DEFAULT_CHARGER_CONTROL = True
 
 DEFAULT_SCAN_INTERVAL = 15  # seconds
 MIN_SCAN_INTERVAL = 10

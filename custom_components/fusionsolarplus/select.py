@@ -7,7 +7,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import CONF_CHARGER_CONTROL, DEFAULT_CHARGER_CONTROL, DOMAIN
 from .devices.charger.select import ChargerSelectHandler
 from .device_handler import BaseDeviceHandler
 
@@ -21,7 +21,9 @@ class SelectHandlerFactory:
     def create_handler(
         hass: HomeAssistant, entry: ConfigEntry, device_info: Dict[str, Any]
     ) -> BaseDeviceHandler:
-        if entry.data.get("device_type") == "Charger":
+        if entry.data.get("device_type") == "Charger" and entry.options.get(
+            CONF_CHARGER_CONTROL, DEFAULT_CHARGER_CONTROL
+        ):
             return ChargerSelectHandler(hass, entry, device_info)
         return None
 

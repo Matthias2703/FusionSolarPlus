@@ -45,7 +45,8 @@
           "password": "Passwort",
           "subdomain": "Subdomain",
           "installer": "Installateur-Zugriff aktivieren. Mit dem Setzen dieses Hakens bestätige ich, den Haftungsausschluss für Installateure gelesen zu haben.",
-          "scan_interval": "Aktualisierungsintervall in Sekunden (10-3600)"
+          "scan_interval": "Aktualisierungsintervall in Sekunden (10-3600)",
+          "charger_control": "Wallbox-Steuerung aktivieren (Lademodus, Kabelverriegelung, Leistungslimit, Dynamic Power)"
         }
       }
     }

@@ -45,7 +45,8 @@
           "password": "Password",
           "subdomain": "Subdomain",
           "installer": "Enable installer access. By checking this checkbox I confirm that I have read the installer disclaimer.",
-          "scan_interval": "Update interval in seconds (10-3600)"
+          "scan_interval": "Update interval in seconds (10-3600)",
+          "charger_control": "Enable charger control (charging mode, cable lock, power limit, dynamic power)"
         }
       }
     }
