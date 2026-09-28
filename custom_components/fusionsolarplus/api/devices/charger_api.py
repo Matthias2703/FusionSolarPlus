@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
+
+_LOGGER = logging.getLogger(__name__)
 
 
 WORKING_MODE_SIGNAL_ID = 20002  # 0 = Normal charge, 1 = PV Power Preferred
@@ -38,7 +41,7 @@ def _get_dn_ids(client: Any, device_dn: str | None) -> tuple[str, str]:
 
 def _query_plan(client: Any, connector_dn_id: str) -> dict:
     url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/charger/plan/query-plan"
-    r = client._session.get(url=url, params={"dnId": connector_dn_id})
+    r = client._session.get(url=url, params={"dnId": int(connector_dn_id)})
     r.raise_for_status()
     return r.json()
 
@@ -48,7 +51,7 @@ def _query_working_mode(client: Any, charger_dn_id: str) -> str | None:
     payload = {
         "conditions": [
             {
-                "dnId": charger_dn_id,
+                "dnId": int(charger_dn_id),
                 "queryAll": False,
                 "signals": [WORKING_MODE_SIGNAL_ID],
             }
@@ -89,7 +92,8 @@ def get_charger_data(client: Any, device_dn: str | None = None) -> dict:
             "working_mode": _query_working_mode(client, dn_id_2),
             "schedule_on": bool(_query_plan(client, dn_id_1).get("switchOn")),
         }
-    except Exception:
+    except Exception as err:
+        _LOGGER.warning("Could not read charger control state: %r", err)
         data["control"] = None
     return data
 
