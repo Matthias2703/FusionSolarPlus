@@ -14,14 +14,18 @@ CHARGER = "charger"
 
 WORKING_MODE_SIGNAL_ID = 20002  # 0 = Normal charge, 1 = PV Power Preferred
 
+# Read-only values shown as diagnostic sensors (never written).
+READONLY_SIGNALS: dict[int, str] = {
+    20006: CONNECTOR,  # Max Charging Power from Grid
+    20007: CONNECTOR,  # Surplus Power to Start Charging
+}
+
 # Only these signals may ever be written. Which dn they live on was taken
 # from the app's own requests: the working mode and PV settings belong to the
 # connector (tree child), the power limit to the charger device itself.
 WRITABLE_SIGNALS: dict[int, str] = {
     20002: CONNECTOR,  # Working Mode
     20005: CONNECTOR,  # Control Charging Connector Lock
-    20006: CONNECTOR,  # Max Charging Power from Grid
-    20007: CONNECTOR,  # Surplus Power to Start Charging
     538976529: CONNECTOR,  # Dynamic Charge Power
     20001: CHARGER,  # Charge Power Upper Limit
 }
@@ -145,7 +149,9 @@ def get_charger_data(client: Any, device_dn: str | None = None) -> dict:
     # Control state and history are best-effort: a failure here must not
     # take the read-only sensors down with it.
     try:
-        connector_signals = [s for s, dn in WRITABLE_SIGNALS.items() if dn == CONNECTOR]
+        connector_signals = [
+            s for s, dn in {**WRITABLE_SIGNALS, **READONLY_SIGNALS}.items() if dn == CONNECTOR
+        ]
         charger_signals = [s for s, dn in WRITABLE_SIGNALS.items() if dn == CHARGER]
         settings = _query_signals(client, dn_id_1, connector_signals)
         settings.update(_query_signals(client, dn_id_2, charger_signals))

@@ -238,8 +238,6 @@ CHARGING_MODE_OPTIONS = [MODE_CHARGE_NOW, MODE_PV_SURPLUS, MODE_SCHEDULED]
 # written. Installer/safety values (main breaker, earthing system, networking
 # mode, phase switching, the schedules themselves) are deliberately absent.
 SIGNAL_CONNECTOR_LOCK = 20005
-SIGNAL_MAX_GRID_POWER = 20006
-SIGNAL_SURPLUS_START = 20007
 SIGNAL_DYNAMIC_POWER = 538976529
 SIGNAL_POWER_LIMIT = 20001
 

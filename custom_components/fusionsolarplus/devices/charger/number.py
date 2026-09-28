@@ -7,14 +7,12 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from ...device_handler import BaseDeviceHandler
 from .control import ChargerSettingEntity
-from .const import SIGNAL_MAX_GRID_POWER, SIGNAL_POWER_LIMIT, SIGNAL_SURPLUS_START
+from .const import SIGNAL_POWER_LIMIT
 
-# (signal id, unique key, name, min kW, max kW). The power limit range is the
-# one the app reports; the other two are conservative and the cloud rejects
-# anything it does not accept.
+# (signal id, unique key, name, min kW, max kW). The range is the one the app
+# reports. The two PV values (20006/20007) are not editable on purpose: the
+# app flags them displayExp=false, i.e. internal defaults it never shows.
 NUMBERS = [
-    (SIGNAL_SURPLUS_START, "surplus_power_to_start", "PV Start Surplus", 1.4, 11.0),
-    (SIGNAL_MAX_GRID_POWER, "max_grid_power", "PV Max Grid Power", 0.0, 11.0),
     (SIGNAL_POWER_LIMIT, "charge_power_limit", "Power Limit", 4.1, 11.0),
 ]
 

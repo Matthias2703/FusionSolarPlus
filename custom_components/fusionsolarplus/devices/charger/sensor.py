@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 from typing import Callable, Dict, Any, List
 
+from homeassistant.const import EntityCategory
 from homeassistant.helpers.update_coordinator import (
     DataUpdateCoordinator,
     CoordinatorEntity,
@@ -72,7 +73,21 @@ class ChargerDeviceHandler(BaseDeviceHandler):
                         unique_ids.add(unique_id)
 
         entities.extend(self._create_history_entities(coordinator))
+        entities.extend(self._create_setting_sensors(coordinator))
         return entities
+
+    def _create_setting_sensors(self, coordinator: DataUpdateCoordinator) -> List:
+        """Read-only view of the PV thresholds the app does not display."""
+        specs = [
+            (20007, "pv_start_surplus", "PV Start Surplus", None),
+            (20006, "pv_max_grid_power", "PV Max Grid Power", "kW"),
+        ]
+        return [
+            FusionSolarChargerSettingSensor(
+                coordinator, self.device_info, signal_id, key, name, unit
+            )
+            for signal_id, key, name, unit in specs
+        ]
 
     def _create_history_entities(self, coordinator: DataUpdateCoordinator) -> List:
         """Sensors built from the charge record list (read-only)."""
@@ -224,3 +239,27 @@ class FusionSolarChargeHistorySensor(CoordinatorEntity, SensorEntity):
         return self.coordinator.last_update_success and bool(
             (self.coordinator.data or {}).get("history")
         )
+
+
+class FusionSolarChargerSettingSensor(CoordinatorEntity, SensorEntity):
+    """A charger config value shown read-only (diagnostic)."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator, device_info, signal_id, key, name, unit=None):
+        super().__init__(coordinator)
+        device_id = list(device_info["identifiers"])[0][1]
+        self._signal_id = signal_id
+        self._attr_name = name
+        self._attr_device_info = device_info
+        self._attr_unique_id = f"{device_id}_{key}_sensor"
+        self._attr_native_unit_of_measurement = unit
+
+    @property
+    def native_value(self):
+        control = (self.coordinator.data or {}).get("control")
+        raw = control.get("settings", {}).get(self._signal_id) if control else None
+        try:
+            return float(raw) if raw is not None else None
+        except ValueError:
+            return None
