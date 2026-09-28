@@ -64,7 +64,7 @@
       "cable_lock": {
         "name": "Kabelverriegelung",
         "state": {
-          "manual": "Manuell verriegeln",
+          "manual": "Immer verriegeln",
           "lock_when_charging": "Beim Laden verriegeln",
           "lock_after_insert": "Nach dem Einstecken verriegeln"
         }

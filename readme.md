@@ -77,7 +77,7 @@ The read-only charger sensors (status, power, energy, charge history, and the tw
 | Entity | Type | What it does | Cloud signal |
 |---|---|---|---|
 | Charging Mode | select | *Charge now*, *PV surplus* or *Scheduled*, the three modes of the FusionSolar app | working mode `20002` + schedule switch |
-| Cable Lock | select | Manual lock / lock when charging / lock after being inserted | `20005` |
+| Cable Lock | select | Always lock / lock when charging / lock after being inserted (the app's names) | `20005` |
 | Power Limit | number | Charge power upper limit. Minimum and maximum are what the cloud reports for your installation (for example 4.1–11 kW; a site approved for 22 kW reports up to 22 kW) | `20001` |
 | Dynamic Power | switch | Dynamic charge power on/off | `538976529` |
 
@@ -109,7 +109,8 @@ If the schedule is on, *Scheduled* wins whatever the working mode says. The work
 ## Limitations
 
 * **Cloud only, unofficial endpoints.** The ids and requests were captured from the FusionSolar app. Huawei can change them without notice.
-* **Tested on one charger** (SCharger-22KT-S0 with an EMMA): charging mode, schedule and dynamic power were exercised against the real device. Cable lock and power limit use the same endpoint but have not been exercised yet.
+* **Tested on one charger** (SCharger-22KT-S0 with an EMMA): charging mode, schedule, dynamic power and cable lock were exercised against the real device, and the cable lock request was compared with the one the FusionSolar app sends (identical). The power limit uses the same endpoint but has not been written yet.
+* **Lowering the power limit changes the schedules in the app.** When the new limit is below the charging power of a schedule, the FusionSolar app warns that the schedule's power is set to the new limit as well. The integration only writes the limit itself and leaves the plans alone, so a schedule may still be configured for a higher power than the limit. The limit is what the charger enforces.
 * **Starting or stopping a running charging session is not supported.** Only the mode and settings above are.
 * **Two controllers.** An EMMA runs its own automatic charging logic. The integration only sees a change made by the EMMA or the app on the next update and does not fight it.
 * Charge now, PV surplus and Scheduled describe what the cloud reports; the wallbox itself needs a connected and released car to actually charge.
