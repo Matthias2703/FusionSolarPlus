@@ -62,6 +62,62 @@ When configuring the energy dashboard you need to provide the following settings
 | **Home Battery Storage** | Energy going in to the battery   |   Battery    | Energy Charged Today             |
 |                          | Energy coming out of the battery |   Battery    | Energy Discharged Today          |
 | **Solar Panels**         | Solar Production                 |   Inverter   | Daily Energy (for each inverter) |
+
+# Charger control (experimental, off by default)
+
+For Huawei SCharger wallboxes the integration can also **write** to the charger through the FusionSolar cloud. Because this changes real hardware, it is **off by default** and has to be enabled per charger entry:
+
+1. **Settings » Devices & Services » FusionSolarPlus**, open the **Charger** entry.
+2. Click **Configure** and tick **Enable charger control**, then submit. The entry reloads and the entities below appear. Untick it to remove them again (entities that were already created stay in the registry as "no longer provided" and can be deleted there).
+
+The read-only charger sensors (status, power, energy, charge history, and the two diagnostic values below) do not depend on this option.
+
+## Entities added by charger control
+
+| Entity | Type | What it does | Cloud signal |
+|---|---|---|---|
+| Charging Mode | select | *Charge now*, *PV surplus* or *Scheduled*, the three modes of the FusionSolar app | working mode `20002` + schedule switch |
+| Cable Lock | select | Manual lock / lock when charging / lock after being inserted | `20005` |
+| Power Limit | number | Charge power upper limit. Minimum and maximum are what the cloud reports for your installation (for example 4.1–11 kW; a site approved for 22 kW reports up to 22 kW) | `20001` |
+| Dynamic Power | switch | Dynamic charge power on/off | `538976529` |
+
+The settings are shown as configuration entities; only *Charging Mode* is a regular control.
+
+How the three modes map to the cloud:
+
+| Mode | Schedule | Working mode |
+|---|---|---|
+| Charge now | off | `0` normal charge |
+| PV surplus | off | `1` PV power preferred |
+| Scheduled | on (plans as configured in the app) | left as is |
+
+If the schedule is on, *Scheduled* wins whatever the working mode says. The working mode is available as the `working_mode` attribute of the select.
+
+## Read-only additions (always available)
+
+* **PV Start Surplus** and **PV Max Grid Power** (diagnostic): the app flags these two values as internal defaults it never shows, so they can be read but not changed.
+* **Charge Sessions (180 Days)**, **Last Session Energy / Duration / Start / Mode**: taken from the charge records, refreshed at most every 5 minutes.
+
+## How writes behave
+
+* Only a fixed list of signals can be written (mode, cable lock, dynamic power, power limit). Installer and safety values such as the main breaker, earthing system, networking mode, phase switching and the charging plans themselves are never written.
+* Values are checked before anything is sent (allowed options, and for the power limit the range reported by the cloud).
+* Every change is confirmed by reading the value back (up to three checks, then one rewrite). While that happens the entity shows the requested value instead of turning *unavailable*; if the cloud never confirms it, the action fails with an error.
+* Switching the schedule resends the existing plans unchanged (the cloud replaces the whole list), skips the write if the schedule is already in the requested state, writes the previous plans to the log, and compares the plans after the change.
+* The cloud sometimes answers HTTP 200 with an error inside the body; that is treated as an error, and a state that cannot be read makes the entity unavailable instead of guessing.
+
+## Limitations
+
+* **Cloud only, unofficial endpoints.** The ids and requests were captured from the FusionSolar app. Huawei can change them without notice.
+* **Tested on one charger** (SCharger-22KT-S0 with an EMMA): charging mode, schedule and dynamic power were exercised against the real device. Cable lock and power limit use the same endpoint but have not been exercised yet.
+* **Starting or stopping a running charging session is not supported.** Only the mode and settings above are.
+* **Two controllers.** An EMMA runs its own automatic charging logic. The integration only sees a change made by the EMMA or the app on the next update and does not fight it.
+* Charge now, PV surplus and Scheduled describe what the cloud reports; the wallbox itself needs a connected and released car to actually charge.
+
+## Other options
+
+Every entry has an **Update interval** option (10–3600 s, default 15 s). Control state and the schedule are cached for 45 s and refreshed right after every change. The setup and options dialogs are available in English and German.
+
 # Entities
 
 
@@ -1286,6 +1342,20 @@ When configuring the energy dashboard you need to provide the following settings
 </details>
 
 </details>
+
+# Changes in this fork
+
+Compared with the original integration:
+
+* **Charger control** (charging mode, cable lock, power limit, dynamic power), off by default. See [Charger control](#charger-control-experimental-off-by-default).
+* **Charger history and diagnostic sensors**: session count and last session energy, duration, start and mode; the two PV thresholds the app does not display.
+* **Request timeouts.** Every request now has a default timeout (10 s connect, 30 s read). Without one a stalled Huawei endpoint could block the login and Home Assistant's startup indefinitely.
+* **Update interval option** (10-3600 s, default 15 s) instead of a hardcoded 15 s.
+* **Battery values.** A value that merely contained a minus sign was replaced by 0, so a negative discharge power read as 0. Only the portal's "-" placeholder is treated as missing now.
+* **NaN values.** `NaN` and infinity are no longer passed on as sensor values.
+* **Startup.** A failed first refresh raises `ConfigEntryNotReady` so Home Assistant retries, instead of leaving the entry failed. Errors in the login/retry path are logged instead of being swallowed.
+* **German translation** of the setup and options dialogs.
+* **Tests** for the charger API layer (`python -m pytest tests`), which run without Home Assistant.
 
 # Issues
 If you encounter any problems while using the integration, please [open an issue](https://github.com/JortvanSchijndel/FusionSolarPlus/issues).

@@ -7,10 +7,11 @@ CONF_INSTALLER = "installer"
 CONF_SCAN_INTERVAL = "scan_interval"
 CONF_CHARGER_CONTROL = "charger_control"
 
-# Whether charger entries expose the entities that write to the wallbox (mode, cable
-# lock, power limit, dynamic power). On in this fork; a change offered upstream
-# should flip this to False so nobody gets write access without opting in.
-DEFAULT_CHARGER_CONTROL = True
+# Whether charger entries expose the entities that write to the wallbox (charging mode,
+# cable lock, power limit, dynamic power). Off by default: nobody gets write access to
+# their charger without opting in via the options flow. See the README section
+# 'Charger control'.
+DEFAULT_CHARGER_CONTROL = False
 
 DEFAULT_SCAN_INTERVAL = 15  # seconds
 MIN_SCAN_INTERVAL = 10
