@@ -6,10 +6,16 @@ import time
 from typing import Any
 
 
-def get_charger_data(client: Any, device_dn: str | None = None) -> dict:
-    client.keep_alive()
+WORKING_MODE_SIGNAL_ID = 20002  # 0 = Normal charge, 1 = PV Power Preferred
 
-    url = f"https://{client._huawei_subdomain}.fusionsolar.huawei.com/rest/dp/pvms/organization/v1/tree"
+
+def _base_url(client: Any) -> str:
+    return f"https://{client._huawei_subdomain}.fusionsolar.huawei.com"
+
+
+def _get_dn_ids(client: Any, device_dn: str | None) -> tuple[str, str]:
+    """Return (connector_dn_id, charger_dn_id) for the charger device."""
+    url = f"{_base_url(client)}/rest/dp/pvms/organization/v1/tree"
     payload = {
         "parentDn": device_dn,
         "treeDepth": "device",
@@ -19,17 +25,53 @@ def get_charger_data(client: Any, device_dn: str | None = None) -> dict:
     }
     r = client._session.post(url=url, json=payload)
     r.raise_for_status()
-    response = r.json()
-    dn_id_1 = response["childList"][0]["elementId"]
+    connector_dn_id = r.json()["childList"][0]["elementId"]
 
-    url = f"https://{client._huawei_subdomain}.fusionsolar.huawei.com/rest/pvms/web/device/v1/mo-details"
+    url = f"{_base_url(client)}/rest/pvms/web/device/v1/mo-details"
     params = (("dn", device_dn), ("_", round(time.time() * 1000)))
     r = client._session.get(url=url, params=params)
     r.raise_for_status()
-    response = r.json()
-    dn_id_2 = str(response.get("data", {}).get("mo", {}).get("dnId"))
+    charger_dn_id = str(r.json().get("data", {}).get("mo", {}).get("dnId"))
 
-    url = f"https://{client._huawei_subdomain}.fusionsolar.huawei.com/rest/neteco/web/homemgr/v1/device/get-realtime-info"
+    return connector_dn_id, charger_dn_id
+
+
+def _query_plan(client: Any, connector_dn_id: str) -> dict:
+    url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/charger/plan/query-plan"
+    r = client._session.get(url=url, params={"dnId": connector_dn_id})
+    r.raise_for_status()
+    return r.json()
+
+
+def _query_working_mode(client: Any, charger_dn_id: str) -> str | None:
+    url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/device/get-config-info"
+    payload = {
+        "conditions": [
+            {
+                "dnId": charger_dn_id,
+                "queryAll": False,
+                "signals": [WORKING_MODE_SIGNAL_ID],
+            }
+        ],
+        "verbose": True,
+    }
+    r = client._session.post(url=url, json=payload)
+    r.raise_for_status()
+    for signals in r.json().values():
+        if not isinstance(signals, list):
+            continue
+        for signal in signals:
+            if signal.get("id") == WORKING_MODE_SIGNAL_ID:
+                return str(signal.get("value"))
+    return None
+
+
+def get_charger_data(client: Any, device_dn: str | None = None) -> dict:
+    client.keep_alive()
+
+    dn_id_1, dn_id_2 = _get_dn_ids(client, device_dn)
+
+    url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/device/get-realtime-info"
     payload = {
         "conditions": [
             {"dnId": dn_id_1, "queryAll": True},
@@ -38,26 +80,69 @@ def get_charger_data(client: Any, device_dn: str | None = None) -> dict:
     }
     r = client._session.post(url=url, json=payload)
     r.raise_for_status()
-    return _normalize_charger_payload(r.json())
+    data = _normalize_charger_payload(r.json())
+
+    # Control state (working mode + schedule) is best-effort: a failure here
+    # must not take the read-only sensors down with it.
+    try:
+        data["control"] = {
+            "working_mode": _query_working_mode(client, dn_id_2),
+            "schedule_on": bool(_query_plan(client, dn_id_1).get("switchOn")),
+        }
+    except Exception:
+        data["control"] = None
+    return data
 
 
-def get_charging_pile_signal_value(raw_data: dict, signal_id: int) -> Any:
-    """Look up one raw signal value from the charging-pile (connector) signal list.
+def set_charger_working_mode(client: Any, device_dn: str, value: str) -> None:
+    """Set the working mode: "0" = Normal charge, "1" = PV Power Preferred."""
+    client.keep_alive()
+    _, charger_dn_id = _get_dn_ids(client, device_dn)
+    url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/device/set-config-info"
+    payload = {
+        "changeValues": [{"id": str(WORKING_MODE_SIGNAL_ID), "value": value}],
+        "dnId": int(charger_dn_id),
+    }
+    r = client._session.post(url=url, json=payload)
+    r.raise_for_status()
 
-    `raw_data` is keyed by dnId, not by a fixed moc id, so the charging-pile
-    list has to be identified by its contents (same approach as
-    devices/charger/sensor.py's _get_signal_list_for_type) rather than by key.
+
+def _plan_to_request(plan: dict) -> dict:
+    """Rebuild a plan the way the app sends it (adds the calculated* fields)."""
+    start, stop = plan["startTime"], plan["stopTime"]
+    if plan.get("isRepeat"):
+        calc_start = int(start.replace(":", ""))
+        calc_stop = int(stop.replace(":", ""))
+    else:
+        calc_start = int(start) // 1000
+        calc_stop = int(stop) // 1000
+    return {
+        **plan,
+        "calculatedStartTime": calc_start,
+        "calculatedStopTime": calc_stop,
+        "repeat": plan.get("isRepeat"),
+        "valid": plan.get("isValid"),
+    }
+
+
+def set_charger_schedule_enabled(client: Any, device_dn: str, enabled: bool) -> None:
+    """Switch the charging schedule on/off, resending the existing plans unchanged.
+
+    config-plan replaces the whole plan list, so the current plans are read
+    first and sent back as they are - only `switchOn` changes.
     """
-    for signals_list in raw_data.values():
-        if not isinstance(signals_list, list):
-            continue
-        names = {s.get("name") for s in signals_list if s.get("name")}
-        if "Charging Connector No." not in names:
-            continue
-        for signal in signals_list:
-            if signal.get("id") == signal_id:
-                return signal.get("realValue", signal.get("value"))
-    return None
+    client.keep_alive()
+    connector_dn_id, _ = _get_dn_ids(client, device_dn)
+    current = _query_plan(client, connector_dn_id)
+    url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/charger/plan/config-plan"
+    payload = {
+        "plans": [_plan_to_request(p) for p in current.get("plans", [])],
+        "switchOn": 1 if enabled else 0,
+        "accountId": "",
+        "dnId": int(connector_dn_id),
+    }
+    r = client._session.post(url=url, json=payload)
+    r.raise_for_status()
 
 
 def _normalize_charger_payload(raw_data: dict) -> dict:

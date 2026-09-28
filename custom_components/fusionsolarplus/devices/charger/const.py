@@ -220,54 +220,15 @@ CHARGER_DEVICE_SIGNALS = [
     },
 ]
 
-# --- Charging control (NOT YET DISCOVERED) ---------------------------------
-# FusionSolar has no public docs for these writable signal IDs. They must be
-# captured once from a real account: open the FusionSolar portal, DevTools ->
-# Network tab, filter on "set-signal-with-randomval", then manually trigger
-# the action in the portal UI and read the `changeValues` payload of the
-# request, e.g. changeValues=[{"id": "12345", "value": "1"}].
-#
-# Scope is deliberately limited to plain Start/Stop charging - the same
-# single action a person triggers by hand in the app. We do NOT touch the
-# charging mode (Scheduled / "nur gruenes Laden" / PV Surplus): that is
-# EMMA's own automatic decision loop, and fighting it from Home Assistant
-# would recreate the same kind of conflict the native app already has.
-# Assumption: the portal is left on plain "Sofort laden" / "Laden" mode, and
-# this switch simply starts/stops within that mode.
-#
-# Needed:
-#   1. Start charging (Charge Now)  -> capture id/value while clicking "Start Charging"
-#   2. Stop charging                -> capture id/value while stopping a session
-#
-# Until filled in, the charger switch is skipped entirely (see
-# devices/charger/switch.py) so nothing is ever sent to the charger with a
-# guessed/wrong signal id.
-CHARGING_START_SIGNAL_ID: int | None = None
-CHARGING_STOP_SIGNAL_ID: int | None = None
-
-# raw string value(s) of "Working Status" (signal id 10004) that mean
-# "actively charging". Read these off a live sensor value while the car is
-# charging vs. idle - until filled in, the charging switch falls back to its
-# last commanded (optimistic) state instead of guessing.
-CHARGING_ACTIVE_STATUS_VALUES: set[str] = set()
-
-# --- Charging mode (RECORDED ONLY, NOT WIRED UP) ---------------------------
-# We capture these while we're already in the network tab, so we don't have
-# to repeat the exercise later if we ever revisit mode switching. Nothing in
-# the integration reads these yet - no select/switch entity is built on top
-# of them (see the "Descope to plain start/stop charging" decision: EMMA runs
-# its own automatic mode logic, and fighting it from HA recreates the app's
-# own flakiness). Treat this purely as a notes field until that's revisited.
-#
-# Capture while manually switching in the portal:
-#   - "Zeitsteuerung" / Scheduled   -> id + value
-#   - "nur gruenes Laden" / PV Surplus -> id + value
-# (likely the same signal id as CHARGING_MODE_SIGNAL_ID with a different
-# value per mode, but confirm rather than assume - Huawei's protocol also
-# uses fully separate signal ids per command elsewhere, e.g. the inverter's
-# on/off use signal 21009 vs 21010, not one id with value 0/1)
-CHARGING_MODE_SIGNAL_ID: int | None = None
-CHARGING_MODE_VALUES: dict[str, str] = {
-    # "Scheduled": "<captured value>",
-    # "PV Surplus": "<captured value>",
-}
+# --- Charging mode (captured from the FusionSolar app) --------------------
+# The app's three modes are a combination of two settings:
+#   schedule on                         -> "Scheduled"  (plans decide when/how)
+#   schedule off + Working Mode 0       -> "Charge now" (charges as soon as the
+#                                          car is plugged in and released)
+#   schedule off + Working Mode 1       -> "PV surplus" (PV Power Preferred)
+# Working Mode is signal 20002 on the charger dn; the schedule is switched with
+# charger/plan/config-plan (switchOn 0/1). See api/devices/charger_api.py.
+MODE_CHARGE_NOW = "Charge now"
+MODE_PV_SURPLUS = "PV surplus"
+MODE_SCHEDULED = "Scheduled"
+CHARGING_MODE_OPTIONS = [MODE_CHARGE_NOW, MODE_PV_SURPLUS, MODE_SCHEDULED]
