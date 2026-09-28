@@ -17,7 +17,11 @@ def _base_url(client: Any) -> str:
 
 
 def _get_dn_ids(client: Any, device_dn: str | None) -> tuple[str, str]:
-    """Return (connector_dn_id, charger_dn_id) for the charger device."""
+    """Return (connector_dn_id, charger_dn_id).
+
+    connector = child of the charger in the device tree (holds the working
+    mode signal); charger = the device itself (holds the schedule).
+    """
     url = f"{_base_url(client)}/rest/dp/pvms/organization/v1/tree"
     payload = {
         "parentDn": device_dn,
@@ -39,19 +43,19 @@ def _get_dn_ids(client: Any, device_dn: str | None) -> tuple[str, str]:
     return connector_dn_id, charger_dn_id
 
 
-def _query_plan(client: Any, connector_dn_id: str) -> dict:
+def _query_plan(client: Any, charger_dn_id: str) -> dict:
     url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/charger/plan/query-plan"
-    r = client._session.get(url=url, params={"dnId": int(connector_dn_id)})
+    r = client._session.get(url=url, params={"dnId": int(charger_dn_id)})
     r.raise_for_status()
     return r.json()
 
 
-def _query_working_mode(client: Any, charger_dn_id: str) -> str | None:
+def _query_working_mode(client: Any, connector_dn_id: str) -> str | None:
     url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/device/get-config-info"
     payload = {
         "conditions": [
             {
-                "dnId": int(charger_dn_id),
+                "dnId": int(connector_dn_id),
                 "queryAll": False,
                 "signals": [WORKING_MODE_SIGNAL_ID],
             }
@@ -89,8 +93,8 @@ def get_charger_data(client: Any, device_dn: str | None = None) -> dict:
     # must not take the read-only sensors down with it.
     try:
         data["control"] = {
-            "working_mode": _query_working_mode(client, dn_id_2),
-            "schedule_on": bool(_query_plan(client, dn_id_1).get("switchOn")),
+            "working_mode": _query_working_mode(client, dn_id_1),
+            "schedule_on": bool(_query_plan(client, dn_id_2).get("switchOn")),
         }
     except Exception as err:
         _LOGGER.warning("Could not read charger control state: %r", err)
@@ -101,11 +105,11 @@ def get_charger_data(client: Any, device_dn: str | None = None) -> dict:
 def set_charger_working_mode(client: Any, device_dn: str, value: str) -> None:
     """Set the working mode: "0" = Normal charge, "1" = PV Power Preferred."""
     client.keep_alive()
-    _, charger_dn_id = _get_dn_ids(client, device_dn)
+    connector_dn_id, _ = _get_dn_ids(client, device_dn)
     url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/device/set-config-info"
     payload = {
         "changeValues": [{"id": str(WORKING_MODE_SIGNAL_ID), "value": value}],
-        "dnId": int(charger_dn_id),
+        "dnId": int(connector_dn_id),
     }
     r = client._session.post(url=url, json=payload)
     r.raise_for_status()
@@ -136,14 +140,18 @@ def set_charger_schedule_enabled(client: Any, device_dn: str, enabled: bool) -> 
     first and sent back as they are - only `switchOn` changes.
     """
     client.keep_alive()
-    connector_dn_id, _ = _get_dn_ids(client, device_dn)
-    current = _query_plan(client, connector_dn_id)
+    _, charger_dn_id = _get_dn_ids(client, device_dn)
+    current = _query_plan(client, charger_dn_id)
+    if not current.get("plans"):
+        raise ValueError(
+            "No charging plans returned - refusing to write, config-plan would erase them"
+        )
     url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/charger/plan/config-plan"
     payload = {
         "plans": [_plan_to_request(p) for p in current.get("plans", [])],
         "switchOn": 1 if enabled else 0,
         "accountId": "",
-        "dnId": int(connector_dn_id),
+        "dnId": int(charger_dn_id),
     }
     r = client._session.post(url=url, json=payload)
     r.raise_for_status()
