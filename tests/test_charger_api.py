@@ -109,7 +109,6 @@ def fresh_state():
     charger_api._DN_CACHE.clear()
     charger_api._HISTORY_CACHE.clear()
     charger_api._CONTROL_CACHE.clear()
-    charger_api._RANGE_CACHE.clear()
     charger_api._WARNED.clear()
     charger_api._DN_CACHE["NE=1"] = ("301", "302")
 
@@ -133,28 +132,10 @@ def test_plan_to_request_rejects_malformed_times():
         charger_api._plan_to_request({**PLANS[0], "startTime": "soon"})
 
 
-def test_query_signals_reads_values_and_ranges():
-    body = {
-        "302": [
-            {
-                "id": 20001,
-                "value": "11.0",
-                "ranges": [{"minValue": 4.1, "maxValue": 22.0}],
-            }
-        ]
-    }
+def test_query_signals_reads_values():
+    body = {"302": [{"id": 20001, "value": "11.0"}, {"id": 99, "value": "1"}]}
     client = Client({"get-config-info": Response(body)})
-    found, ranges = charger_api._query_signals(client, "302", [20001])
-    assert found == {20001: "11.0"}
-    assert ranges == {20001: (4.1, 22.0)}
-    assert charger_api._RANGE_CACHE[20001] == (4.1, 22.0)
-
-
-def test_query_signals_survives_a_malformed_range():
-    body = {"301": [{"id": "20002", "value": "0", "ranges": [{"oops": 1}]}]}
-    client = Client({"get-config-info": Response(body)})
-    found, ranges = charger_api._query_signals(client, "301", [20002])
-    assert found == {20002: "0"} and ranges == {}
+    assert charger_api._query_signals(client, "302", [20001]) == {20001: "11.0"}
 
 
 def test_error_body_with_http_200_is_an_error():
@@ -183,26 +164,23 @@ def test_values_are_validated_before_anything_is_sent():
     client = Client({})
     with pytest.raises(ValueError):
         charger_api.set_charger_setting(client, "NE=1", 20005, "7")
-    with pytest.raises(ValueError):
-        charger_api.set_charger_setting(client, "NE=1", 20001, "22")
     assert client._session.calls == []
 
 
-def test_power_limit_follows_the_range_the_cloud_reports():
-    client = Client({"set-config-info": Response()})
-    charger_api._RANGE_CACHE[20001] = (4.1, 22.0)
-    charger_api.set_charger_setting(client, "NE=1", 20001, "22")
-    sent = client._session.writes("set-config-info")[0][2]["json"]
-    assert sent == {"changeValues": [{"id": "20001", "value": "22"}], "dnId": 302}
+def test_power_limit_is_read_only():
+    # Lowering it made the cloud drop the saved schedules on a real charger.
+    client = Client({})
+    with pytest.raises(ValueError):
+        charger_api.set_charger_setting(client, "NE=1", 20001, "10.0")
+    assert client._session.calls == []
+    assert 20001 in charger_api.READONLY_SIGNALS
 
 
-def test_signals_are_written_to_the_dn_the_app_uses():
+def test_settings_are_written_to_the_connector_dn():
     client = Client({"set-config-info": Response()})
     charger_api.set_charger_setting(client, "NE=1", 20002, "1")
-    charger_api.set_charger_setting(client, "NE=1", 20001, "8.0")
-    first, second = (c[2]["json"] for c in client._session.writes("set-config-info"))
-    assert first["dnId"] == 301  # working mode -> connector
-    assert second["dnId"] == 302  # power limit -> charger
+    sent = client._session.writes("set-config-info")[0][2]["json"]
+    assert sent == {"changeValues": [{"id": "20002", "value": "1"}], "dnId": 301}
 
 
 def test_schedule_write_resends_the_plans_and_changes_only_switch_on():

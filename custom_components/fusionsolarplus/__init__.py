@@ -9,7 +9,7 @@ from .sensor import DeviceHandlerFactory
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS: list[str] = ["sensor", "switch", "select", "number"]
+PLATFORMS: list[str] = ["sensor", "switch", "select"]
 
 
 async def async_setup_entry(hass, entry):

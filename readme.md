@@ -78,10 +78,9 @@ The read-only charger sensors (status, power, energy, charge history, and the tw
 |---|---|---|---|
 | Charging Mode | select | *Charge now*, *PV surplus* or *Scheduled*, the three modes of the FusionSolar app | working mode `20002` + schedule switch |
 | Cable Lock | select | Always lock / lock when charging / lock after being inserted (the app's names) | `20005` |
-| Power Limit | number | Charge power upper limit. Minimum and maximum are what the cloud reports for your installation (for example 4.1–11 kW; a site approved for 22 kW reports up to 22 kW) | `20001` |
 | Dynamic Power | switch | Dynamic charge power on/off | `538976529` |
 
-The settings are shown as configuration entities; only *Charging Mode* is a regular control.
+The cable lock and dynamic power are shown as configuration entities; only *Charging Mode* is a regular control.
 
 How the three modes map to the cloud:
 
@@ -95,13 +94,14 @@ If the schedule is on, *Scheduled* wins whatever the working mode says. The work
 
 ## Read-only additions (always available)
 
+* **Power Limit** (diagnostic, kW): the charge power upper limit. It is read-only on purpose, see the limitations.
 * **PV Start Surplus** and **PV Max Grid Power** (diagnostic): the app flags these two values as internal defaults it never shows, so they can be read but not changed.
 * **Charge Sessions (180 Days)**, **Last Session Energy / Duration / Start / Mode**: taken from the charge records, refreshed at most every 5 minutes.
 
 ## How writes behave
 
-* Only a fixed list of signals can be written (mode, cable lock, dynamic power, power limit). Installer and safety values such as the main breaker, earthing system, networking mode, phase switching and the charging plans themselves are never written.
-* Values are checked before anything is sent (allowed options, and for the power limit the range reported by the cloud).
+* Only a fixed list of signals can be written (working mode, cable lock, dynamic power and the schedule switch). Installer and safety values such as the main breaker, earthing system, networking mode, phase switching and the charging plans themselves are never written.
+* Values are checked before anything is sent (allowed options only).
 * Every change is confirmed by reading the value back (up to three checks, then one rewrite). While that happens the entity shows the requested value instead of turning *unavailable*; if the cloud never confirms it, the action fails with an error.
 * Switching the schedule resends the existing plans unchanged (the cloud replaces the whole list), skips the write if the schedule is already in the requested state, writes the previous plans to the log, and compares the plans after the change.
 * The cloud sometimes answers HTTP 200 with an error inside the body; that is treated as an error, and a state that cannot be read makes the entity unavailable instead of guessing.
@@ -109,8 +109,9 @@ If the schedule is on, *Scheduled* wins whatever the working mode says. The work
 ## Limitations
 
 * **Cloud only, unofficial endpoints.** The ids and requests were captured from the FusionSolar app. Huawei can change them without notice.
-* **Tested on one charger** (SCharger-22KT-S0 with an EMMA): charging mode, schedule, dynamic power and cable lock were exercised against the real device, and the cable lock request was compared with the one the FusionSolar app sends (identical). The power limit uses the same endpoint but has not been written yet.
-* **Lowering the power limit changes the schedules in the app.** When the new limit is below the charging power of a schedule, the FusionSolar app warns that the schedule's power is set to the new limit as well. The integration only writes the limit itself and leaves the plans alone, so a schedule may still be configured for a higher power than the limit. The limit is what the charger enforces.
+* **Tested on one charger** (SCharger-22KT-S0 with an EMMA): charging mode, schedule, dynamic power and cable lock were exercised against the real device, and the cable lock request was compared with the one the FusionSolar app sends (identical). 
+* **The power limit cannot be changed from Home Assistant.** On the tested charger, lowering it below the power of a saved charging schedule (11 kW to 10 kW) made the cloud delete all schedules. They had to be recreated in the app. Change the limit in the FusionSolar app, which warns about this.
+* **Schedules are stored in UTC.** The cloud returns and expects the plan times in UTC and the app converts them (a plan shown as 17:00 in Germany in summer is stored as 15:00). The integration never edits plans; when switching the schedule it resends them exactly as read.
 * **Starting or stopping a running charging session is not supported.** Only the mode and settings above are.
 * **Two controllers.** An EMMA runs its own automatic charging logic. The integration only sees a change made by the EMMA or the app on the next update and does not fight it.
 * Charge now, PV surplus and Scheduled describe what the cloud reports; the wallbox itself needs a connected and released car to actually charge.
@@ -1348,7 +1349,7 @@ Every entry has an **Update interval** option (10–3600 s, default 15 s). Contr
 
 Compared with the original integration:
 
-* **Charger control** (charging mode, cable lock, power limit, dynamic power), off by default. See [Charger control](#charger-control-experimental-off-by-default).
+* **Charger control** (charging mode, cable lock, dynamic power), off by default. See [Charger control](#charger-control-experimental-off-by-default).
 * **Charger history and diagnostic sensors**: session count and last session energy, duration, start and mode; the two PV thresholds the app does not display.
 * **Request timeouts.** Every request now has a default timeout (10 s connect, 30 s read). Without one a stalled Huawei endpoint could block the login and Home Assistant's startup indefinitely.
 * **Update interval option** (10-3600 s, default 15 s) instead of a hardcoded 15 s.

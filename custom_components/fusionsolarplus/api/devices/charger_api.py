@@ -19,17 +19,18 @@ CHARGER = "charger"
 WORKING_MODE_SIGNAL_ID = 20002  # 0 = Normal charge, 1 = PV Power Preferred
 
 # Only these signals may ever be written. Which dn they live on was taken
-# from the app's own requests: the working mode and PV settings belong to the
-# connector (tree child), the power limit to the charger device itself.
+# from the app's own requests: they all belong to the connector (tree child).
 WRITABLE_SIGNALS: dict[int, str] = {
     20002: CONNECTOR,  # Working Mode
     20005: CONNECTOR,  # Control Charging Connector Lock
     538976529: CONNECTOR,  # Dynamic Charge Power
-    20001: CHARGER,  # Charge Power Upper Limit
 }
 
-# Read-only values shown as diagnostic sensors (never written).
+# Read-only values shown as diagnostic sensors (never written). The power limit
+# is read-only on purpose: lowering it below the power of a saved schedule made
+# the cloud drop the user's schedules (seen on a real SCharger).
 READONLY_SIGNALS: dict[int, str] = {
+    20001: CHARGER,  # Charge Power Upper Limit
     20006: CONNECTOR,  # Max Charging Power from Grid
     20007: CONNECTOR,  # Surplus Power to Start Charging
 }
@@ -40,8 +41,6 @@ ENUM_VALUES: dict[int, set[str]] = {
     20005: {"0", "1", "2"},
     538976529: {"0", "1"},
 }
-POWER_LIMIT_SIGNAL_ID = 20001
-DEFAULT_POWER_LIMIT_RANGE = (4.1, 11.0)
 
 HISTORY_TTL_SECONDS = 300
 HISTORY_RETRY_SECONDS = 60
@@ -51,7 +50,6 @@ CONTROL_TTL_SECONDS = 45
 _DN_CACHE: dict[str, tuple[str, str]] = {}
 _HISTORY_CACHE: dict[str, tuple[float, dict]] = {}
 _CONTROL_CACHE: dict[str, tuple[float, dict]] = {}
-_RANGE_CACHE: dict[int, tuple[float, float]] = {}
 _WARNED: set[str] = set()
 _LOCK_GUARD = threading.Lock()
 
@@ -156,14 +154,8 @@ def _query_plan(client: Any, charger_dn_id: str) -> dict:
     return body
 
 
-def _query_signals(
-    client: Any, dn_id: str, signal_ids: list[int]
-) -> tuple[dict[int, str], dict[int, tuple[float, float]]]:
-    """Read config signals; returns ({id: value}, {id: (min, max)}).
-
-    The ranges are what the cloud allows for this installation, e.g. the
-    charge power limit tops out at 11 kW unless the site is approved for more.
-    """
+def _query_signals(client: Any, dn_id: str, signal_ids: list[int]) -> dict[int, str]:
+    """Read config signals; returns {id: value}."""
     url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/device/get-config-info"
     payload = {
         "conditions": [{"dnId": int(dn_id), "queryAll": False, "signals": signal_ids}],
@@ -171,7 +163,6 @@ def _query_signals(
     }
     body = _json(client._session.post(url=url, json=payload))
     values: dict[int, str] = {}
-    ranges: dict[int, tuple[float, float]] = {}
     for signals in (body or {}).values():
         if not isinstance(signals, list):
             continue
@@ -180,20 +171,9 @@ def _query_signals(
                 signal_id = int(signal.get("id"))
             except (TypeError, ValueError):
                 continue
-            if signal_id not in signal_ids or signal.get("value") is None:
-                continue
-            values[signal_id] = str(signal["value"])
-            try:
-                limits = signal.get("ranges") or []
-                if limits:
-                    ranges[signal_id] = (
-                        float(limits[0]["minValue"]),
-                        float(limits[0]["maxValue"]),
-                    )
-            except (KeyError, TypeError, ValueError):
-                pass
-    _RANGE_CACHE.update(ranges)
-    return values, ranges
+            if signal_id in signal_ids and signal.get("value") is not None:
+                values[signal_id] = str(signal["value"])
+    return values
 
 
 def _read_control(client: Any, device_dn: str | None, dn_1: str, dn_2: str) -> dict:
@@ -205,12 +185,9 @@ def _read_control(client: Any, device_dn: str | None, dn_1: str, dn_2: str) -> d
     all_signals = {**WRITABLE_SIGNALS, **READONLY_SIGNALS}
     connector_signals = [s for s, dn in all_signals.items() if dn == CONNECTOR]
     charger_signals = [s for s, dn in all_signals.items() if dn == CHARGER]
-    settings, ranges = _query_signals(client, dn_1, connector_signals)
-    charger_settings, charger_ranges = _query_signals(client, dn_2, charger_signals)
-    settings.update(charger_settings)
-    ranges.update(charger_ranges)
+    settings = _query_signals(client, dn_1, connector_signals)
+    settings.update(_query_signals(client, dn_2, charger_signals))
     control = {
-        "ranges": ranges,
         "working_mode": settings.get(WORKING_MODE_SIGNAL_ID),
         "schedule_on": _truthy(_query_plan(client, dn_2)["switchOn"]),
         "settings": settings,
@@ -299,27 +276,18 @@ def get_charger_data(
 def _validate(signal_id: int, value: str) -> None:
     if signal_id in ENUM_VALUES and str(value) not in ENUM_VALUES[signal_id]:
         raise ValueError(f"{value!r} is not a valid value for signal {signal_id}")
-    if signal_id == POWER_LIMIT_SIGNAL_ID:
-        low, high = _RANGE_CACHE.get(signal_id, DEFAULT_POWER_LIMIT_RANGE)
-        if not low <= float(value) <= high:
-            raise ValueError(f"Power limit {value} kW is outside {low}-{high} kW")
 
 
 def set_charger_setting(
     client: Any, device_dn: str, signal_id: int, value: str
 ) -> None:
-    """Write one whitelisted, validated config signal to the dn the app writes it to."""
+    """Write one whitelisted, validated config signal to the connector dn."""
     if signal_id not in WRITABLE_SIGNALS:
         raise ValueError(f"Signal {signal_id} is not writable through this integration")
     _validate(signal_id, value)
     with _client_lock(client):
         client.keep_alive()
-        connector_dn_id, charger_dn_id = _get_dn_ids(client, device_dn)
-        dn_id = (
-            connector_dn_id
-            if WRITABLE_SIGNALS[signal_id] == CONNECTOR
-            else charger_dn_id
-        )
+        dn_id, _ = _get_dn_ids(client, device_dn)
         url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/device/set-config-info"
         payload = {
             "changeValues": [{"id": str(signal_id), "value": str(value)}],

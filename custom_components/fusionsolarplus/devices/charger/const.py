@@ -239,7 +239,6 @@ CHARGING_MODE_OPTIONS = [MODE_CHARGE_NOW, MODE_PV_SURPLUS, MODE_SCHEDULED]
 # mode, phase switching, the schedules themselves) are deliberately absent.
 SIGNAL_CONNECTOR_LOCK = 20005
 SIGNAL_DYNAMIC_POWER = 538976529
-SIGNAL_POWER_LIMIT = 20001
 
 # cloud value -> option key (labels live in translations/*.json)
 CONNECTOR_LOCK_OPTIONS = {

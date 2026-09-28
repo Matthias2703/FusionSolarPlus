@@ -77,8 +77,9 @@ class ChargerDeviceHandler(BaseDeviceHandler):
         return entities
 
     def _create_setting_sensors(self, coordinator: DataUpdateCoordinator) -> List:
-        """Read-only view of the PV thresholds the app does not display."""
+        """Read-only view of the power limit and the PV thresholds the app hides."""
         specs = [
+            (20001, "charge_power_limit", "Power Limit", "kW"),
             (20007, "pv_start_surplus", "PV Start Surplus", None),
             (20006, "pv_max_grid_power", "PV Max Grid Power", "kW"),
         ]
