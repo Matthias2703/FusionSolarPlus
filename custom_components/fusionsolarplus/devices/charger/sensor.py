@@ -91,7 +91,7 @@ class ChargerDeviceHandler(BaseDeviceHandler):
 
         mode_names = {0: "Normal charge", 1: "PV surplus"}
         specs = [
-            ("history_total", "Charge Sessions", lambda h: h.get("total"), None, None, SensorStateClass.TOTAL_INCREASING),
+            ("history_total", "Charge Sessions (6 Months)", lambda h: h.get("total"), None, None, SensorStateClass.TOTAL_INCREASING),
             ("history_last_energy", "Last Session Energy", last("totalPower", float), "kWh", SensorDeviceClass.ENERGY, None),
             ("history_last_duration", "Last Session Duration", last("totalTime", int), "min", SensorDeviceClass.DURATION, None),
             ("history_last_start", "Last Session Start", last("startTime", to_time), None, SensorDeviceClass.TIMESTAMP, None),

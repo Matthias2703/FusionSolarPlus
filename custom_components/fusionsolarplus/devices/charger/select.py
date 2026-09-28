@@ -52,7 +52,7 @@ class ChargerSelectHandler(BaseDeviceHandler):
                 self.device_name,
                 SIGNAL_CONNECTOR_LOCK,
                 "connector_lock_control",
-                "Connector Lock Control",
+                "Cable Lock",
             ),
         ]
 

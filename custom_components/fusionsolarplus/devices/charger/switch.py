@@ -22,7 +22,7 @@ class ChargerSwitchHandler(BaseDeviceHandler):
                 self.device_name,
                 SIGNAL_DYNAMIC_POWER,
                 "dynamic_charge_power",
-                "Dynamic Charge Power",
+                "Dynamic Power",
             )
         ]
 

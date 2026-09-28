@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime
 from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ WRITABLE_SIGNALS: dict[int, str] = {
 _DN_CACHE: dict[str, tuple[str, str]] = {}
 _HISTORY_CACHE: dict[str, tuple[float, dict]] = {}
 HISTORY_TTL_SECONDS = 300
+HISTORY_WINDOW_DAYS = 180
 
 
 def _base_url(client: Any) -> str:
@@ -98,19 +100,26 @@ def _query_charge_history(client: Any, charger_dn_id: str) -> dict:
     if cached and time.time() - cached[0] < HISTORY_TTL_SECONDS:
         return cached[1]
 
+    # The app only ever asks for about half a year at a time (Apr 1 - Sep 30),
+    # so stay inside that window instead of asking for years.
     now = int(time.time())
+    tz = datetime.now().astimezone().tzinfo
     url = f"{_base_url(client)}/rest/neteco/web/homemgr/v2/charger/list-charge-record"
     payload = {
-        "timeZoneId": "UTC",
+        "timeZoneId": getattr(tz, "key", None) or "UTC",
         "pageNo": 1,
-        "pageSize": 1,
+        "pageSize": 20,
         "dnId": int(charger_dn_id),
-        "startTime": str(now - 3 * 365 * 86400),
+        "startTime": str(now - HISTORY_WINDOW_DAYS * 86400),
         "endTime": str(now),
     }
     r = client._session.post(url=url, json=payload)
     r.raise_for_status()
-    data = r.json().get("data") or {}
+    body = r.json()
+    # The cloud answers HTTP 200 with an error in the body when it dislikes a request.
+    if str(body.get("code", "0")) != "0":
+        raise RuntimeError(f"list-charge-record: {body.get('description') or body}")
+    data = body.get("data") or {}
     records = data.get("records") or []
     history = {"total": data.get("total"), "last": records[0] if records else None}
     _HISTORY_CACHE[charger_dn_id] = (time.time(), history)

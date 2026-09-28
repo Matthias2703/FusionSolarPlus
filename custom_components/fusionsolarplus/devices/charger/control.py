@@ -4,6 +4,7 @@ import asyncio
 import logging
 from typing import Any, Callable, Dict
 
+from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import (
@@ -21,6 +22,8 @@ MAX_ATTEMPTS = 2
 
 class ChargerSettingEntity(CoordinatorEntity):
     """One writable charger config signal, verified after every change."""
+
+    _attr_entity_category = EntityCategory.CONFIG
 
     def __init__(
         self,

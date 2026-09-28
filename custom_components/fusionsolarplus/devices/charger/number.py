@@ -13,9 +13,9 @@ from .const import SIGNAL_MAX_GRID_POWER, SIGNAL_POWER_LIMIT, SIGNAL_SURPLUS_STA
 # one the app reports; the other two are conservative and the cloud rejects
 # anything it does not accept.
 NUMBERS = [
-    (SIGNAL_SURPLUS_START, "surplus_power_to_start", "Surplus Power to Start Charging", 1.4, 11.0),
-    (SIGNAL_MAX_GRID_POWER, "max_grid_power", "Max Charging Power from Grid", 0.0, 11.0),
-    (SIGNAL_POWER_LIMIT, "charge_power_limit", "Charge Power Upper Limit", 4.1, 11.0),
+    (SIGNAL_SURPLUS_START, "surplus_power_to_start", "PV Start Surplus", 1.4, 11.0),
+    (SIGNAL_MAX_GRID_POWER, "max_grid_power", "PV Max Grid Power", 0.0, 11.0),
+    (SIGNAL_POWER_LIMIT, "charge_power_limit", "Power Limit", 4.1, 11.0),
 ]
 
 
