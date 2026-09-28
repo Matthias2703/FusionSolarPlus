@@ -1,4 +1,4 @@
-"""Switch platform for FusionSolar Plus."""
+"""Number platform for FusionSolar Plus."""
 
 import logging
 from typing import Dict, Any
@@ -8,47 +8,39 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN
-from .devices.inverter.switch import InverterSwitchHandler
-from .devices.charger.switch import ChargerSwitchHandler
+from .devices.charger.number import ChargerNumberHandler
 from .device_handler import BaseDeviceHandler
 
 _LOGGER = logging.getLogger(__name__)
 
 
-class SwitchHandlerFactory:
-    """Create appropriate switch handlers."""
+class NumberHandlerFactory:
+    """Create appropriate number handlers."""
 
     @staticmethod
     def create_handler(
         hass: HomeAssistant, entry: ConfigEntry, device_info: Dict[str, Any]
     ) -> BaseDeviceHandler:
-        device_type = entry.data.get("device_type")
-        installer = entry.options.get("installer", entry.data.get("installer", False))
-
-        if device_type == "Inverter" and installer:
-            return InverterSwitchHandler(hass, entry, device_info)
-        elif device_type == "Charger":
-            return ChargerSwitchHandler(hass, entry, device_info)
-        else:
-            return None
+        if entry.data.get("device_type") == "Charger":
+            return ChargerNumberHandler(hass, entry, device_info)
+        return None
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ):
-    """Set up switch platform."""
+    """Set up select platform."""
     device_name = entry.data.get("device_name")
     device_info = hass.data[DOMAIN].get(f"{entry.entry_id}_device_info")
 
     if not device_info:
         _LOGGER.debug(
-            "Device info not found for device %s. Skipping switch setup.", device_name
+            "Device info not found for device %s. Skipping number setup.", device_name
         )
         return
 
     try:
-        handler = SwitchHandlerFactory.create_handler(hass, entry, device_info)
-
+        handler = NumberHandlerFactory.create_handler(hass, entry, device_info)
         if handler is None:
             return
 
@@ -57,11 +49,10 @@ async def async_setup_entry(
             return
 
         entities = handler.create_entities(coordinator)
-
         _LOGGER.info(
-            "Adding %d switch entities for device %s", len(entities), device_name
+            "Adding %d number entities for device %s", len(entities), device_name
         )
         async_add_entities(entities)
 
     except Exception as e:
-        _LOGGER.error("Failed to set up switches for device %s: %s", device_name, e)
+        _LOGGER.error("Failed to set up numbers for device %s: %s", device_name, e)

@@ -5,7 +5,6 @@ import logging
 from typing import Dict, Any, List
 
 from homeassistant.core import HomeAssistant
-from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.select import SelectEntity
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.update_coordinator import (
@@ -15,7 +14,10 @@ from homeassistant.helpers.update_coordinator import (
 
 from ...device_handler import BaseDeviceHandler
 from ...const import DOMAIN
+from .control import ChargerSettingEntity
 from .const import (
+    CONNECTOR_LOCK_OPTIONS,
+    SIGNAL_CONNECTOR_LOCK,
     CHARGING_MODE_OPTIONS,
     MODE_CHARGE_NOW,
     MODE_PV_SURPLUS,
@@ -40,7 +42,18 @@ class ChargerSelectHandler(BaseDeviceHandler):
                 self.device_info,
                 self.device_id,
                 self.device_name,
-            )
+            ),
+            FusionSolarConnectorLockSelect(
+                coordinator,
+                self.hass,
+                self.entry.entry_id,
+                self.device_info,
+                self.device_id,
+                self.device_name,
+                SIGNAL_CONNECTOR_LOCK,
+                "connector_lock_control",
+                "Connector Lock Control",
+            ),
         ]
 
 
@@ -139,3 +152,21 @@ class FusionSolarChargingModeSelect(CoordinatorEntity, SelectEntity):
         finally:
             self._busy = False
             self.async_write_ha_state()
+
+
+class FusionSolarConnectorLockSelect(ChargerSettingEntity, SelectEntity):
+    """When the cable is locked: manually / while charging / once inserted."""
+
+    _attr_icon = "mdi:lock"
+    _attr_options = list(CONNECTOR_LOCK_OPTIONS.values())
+
+    @property
+    def current_option(self) -> str | None:
+        return CONNECTOR_LOCK_OPTIONS.get(self.raw_value)
+
+    async def async_select_option(self, option: str) -> None:
+        by_label = {label: key for key, label in CONNECTOR_LOCK_OPTIONS.items()}
+        if option not in by_label:
+            raise HomeAssistantError(f"Unknown lock option: {option}")
+        key = by_label[option]
+        await self._write(key, lambda raw: raw == key)

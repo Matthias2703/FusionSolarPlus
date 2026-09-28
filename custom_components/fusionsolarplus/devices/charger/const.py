@@ -232,3 +232,19 @@ MODE_CHARGE_NOW = "Charge now"
 MODE_PV_SURPLUS = "PV surplus"
 MODE_SCHEDULED = "Scheduled"
 CHARGING_MODE_OPTIONS = [MODE_CHARGE_NOW, MODE_PV_SURPLUS, MODE_SCHEDULED]
+
+# --- Writable settings (signal ids captured from the app's config screens) --
+# Only signals listed in api/devices/charger_api.py WRITABLE_SIGNALS can be
+# written. Installer/safety values (main breaker, earthing system, networking
+# mode, phase switching, the schedules themselves) are deliberately absent.
+SIGNAL_CONNECTOR_LOCK = 20005
+SIGNAL_MAX_GRID_POWER = 20006
+SIGNAL_SURPLUS_START = 20007
+SIGNAL_DYNAMIC_POWER = 538976529
+SIGNAL_POWER_LIMIT = 20001
+
+CONNECTOR_LOCK_OPTIONS = {
+    "0": "Manual lock",
+    "1": "Lock when charging",
+    "2": "Lock after being inserted",
+}

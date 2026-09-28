@@ -8,8 +8,26 @@ from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
+CONNECTOR = "connector"
+CHARGER = "charger"
 
 WORKING_MODE_SIGNAL_ID = 20002  # 0 = Normal charge, 1 = PV Power Preferred
+
+# Only these signals may ever be written. Which dn they live on was taken
+# from the app's own requests: the working mode and PV settings belong to the
+# connector (tree child), the power limit to the charger device itself.
+WRITABLE_SIGNALS: dict[int, str] = {
+    20002: CONNECTOR,  # Working Mode
+    20005: CONNECTOR,  # Control Charging Connector Lock
+    20006: CONNECTOR,  # Max Charging Power from Grid
+    20007: CONNECTOR,  # Surplus Power to Start Charging
+    538976529: CONNECTOR,  # Dynamic Charge Power
+    20001: CHARGER,  # Charge Power Upper Limit
+}
+
+_DN_CACHE: dict[str, tuple[str, str]] = {}
+_HISTORY_CACHE: dict[str, tuple[float, dict]] = {}
+HISTORY_TTL_SECONDS = 300
 
 
 def _base_url(client: Any) -> str:
@@ -21,7 +39,11 @@ def _get_dn_ids(client: Any, device_dn: str | None) -> tuple[str, str]:
 
     connector = child of the charger in the device tree (holds the working
     mode signal); charger = the device itself (holds the schedule).
+    The ids never change for a device, so they are looked up once.
     """
+    if device_dn in _DN_CACHE:
+        return _DN_CACHE[device_dn]
+
     url = f"{_base_url(client)}/rest/dp/pvms/organization/v1/tree"
     payload = {
         "parentDn": device_dn,
@@ -40,7 +62,8 @@ def _get_dn_ids(client: Any, device_dn: str | None) -> tuple[str, str]:
     r.raise_for_status()
     charger_dn_id = str(r.json().get("data", {}).get("mo", {}).get("dnId"))
 
-    return connector_dn_id, charger_dn_id
+    _DN_CACHE[device_dn] = (str(connector_dn_id), charger_dn_id)
+    return _DN_CACHE[device_dn]
 
 
 def _query_plan(client: Any, charger_dn_id: str) -> dict:
@@ -50,27 +73,48 @@ def _query_plan(client: Any, charger_dn_id: str) -> dict:
     return r.json()
 
 
-def _query_working_mode(client: Any, connector_dn_id: str) -> str | None:
+def _query_signals(client: Any, dn_id: str, signal_ids: list[int]) -> dict[int, str]:
+    """Read config signals; returns {signal_id: value as string}."""
     url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/device/get-config-info"
     payload = {
-        "conditions": [
-            {
-                "dnId": int(connector_dn_id),
-                "queryAll": False,
-                "signals": [WORKING_MODE_SIGNAL_ID],
-            }
-        ],
+        "conditions": [{"dnId": int(dn_id), "queryAll": False, "signals": signal_ids}],
         "verbose": True,
     }
     r = client._session.post(url=url, json=payload)
     r.raise_for_status()
+    values: dict[int, str] = {}
     for signals in r.json().values():
         if not isinstance(signals, list):
             continue
         for signal in signals:
-            if signal.get("id") == WORKING_MODE_SIGNAL_ID:
-                return str(signal.get("value"))
-    return None
+            if signal.get("id") in signal_ids and signal.get("value") is not None:
+                values[int(signal["id"])] = str(signal["value"])
+    return values
+
+
+def _query_charge_history(client: Any, charger_dn_id: str) -> dict:
+    """Latest charge session and total count, cached for a few minutes."""
+    cached = _HISTORY_CACHE.get(charger_dn_id)
+    if cached and time.time() - cached[0] < HISTORY_TTL_SECONDS:
+        return cached[1]
+
+    now = int(time.time())
+    url = f"{_base_url(client)}/rest/neteco/web/homemgr/v2/charger/list-charge-record"
+    payload = {
+        "timeZoneId": "UTC",
+        "pageNo": 1,
+        "pageSize": 1,
+        "dnId": int(charger_dn_id),
+        "startTime": str(now - 3 * 365 * 86400),
+        "endTime": str(now),
+    }
+    r = client._session.post(url=url, json=payload)
+    r.raise_for_status()
+    data = r.json().get("data") or {}
+    records = data.get("records") or []
+    history = {"total": data.get("total"), "last": records[0] if records else None}
+    _HISTORY_CACHE[charger_dn_id] = (time.time(), history)
+    return history
 
 
 def get_charger_data(client: Any, device_dn: str | None = None) -> dict:
@@ -89,30 +133,49 @@ def get_charger_data(client: Any, device_dn: str | None = None) -> dict:
     r.raise_for_status()
     data = _normalize_charger_payload(r.json())
 
-    # Control state (working mode + schedule) is best-effort: a failure here
-    # must not take the read-only sensors down with it.
+    # Control state and history are best-effort: a failure here must not
+    # take the read-only sensors down with it.
     try:
+        connector_signals = [s for s, dn in WRITABLE_SIGNALS.items() if dn == CONNECTOR]
+        charger_signals = [s for s, dn in WRITABLE_SIGNALS.items() if dn == CHARGER]
+        settings = _query_signals(client, dn_id_1, connector_signals)
+        settings.update(_query_signals(client, dn_id_2, charger_signals))
         data["control"] = {
-            "working_mode": _query_working_mode(client, dn_id_1),
+            "working_mode": settings.get(WORKING_MODE_SIGNAL_ID),
             "schedule_on": bool(_query_plan(client, dn_id_2).get("switchOn")),
+            "settings": settings,
         }
     except Exception as err:
         _LOGGER.warning("Could not read charger control state: %r", err)
         data["control"] = None
+
+    try:
+        data["history"] = _query_charge_history(client, dn_id_2)
+    except Exception as err:
+        _LOGGER.warning("Could not read charge history: %r", err)
+        data["history"] = None
     return data
+
+
+def set_charger_setting(client: Any, device_dn: str, signal_id: int, value: str) -> None:
+    """Write one whitelisted config signal to the dn the app writes it to."""
+    if signal_id not in WRITABLE_SIGNALS:
+        raise ValueError(f"Signal {signal_id} is not writable through this integration")
+    client.keep_alive()
+    connector_dn_id, charger_dn_id = _get_dn_ids(client, device_dn)
+    dn_id = connector_dn_id if WRITABLE_SIGNALS[signal_id] == CONNECTOR else charger_dn_id
+    url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/device/set-config-info"
+    payload = {
+        "changeValues": [{"id": str(signal_id), "value": str(value)}],
+        "dnId": int(dn_id),
+    }
+    r = client._session.post(url=url, json=payload)
+    r.raise_for_status()
 
 
 def set_charger_working_mode(client: Any, device_dn: str, value: str) -> None:
     """Set the working mode: "0" = Normal charge, "1" = PV Power Preferred."""
-    client.keep_alive()
-    connector_dn_id, _ = _get_dn_ids(client, device_dn)
-    url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/device/set-config-info"
-    payload = {
-        "changeValues": [{"id": str(WORKING_MODE_SIGNAL_ID), "value": value}],
-        "dnId": int(connector_dn_id),
-    }
-    r = client._session.post(url=url, json=payload)
-    r.raise_for_status()
+    set_charger_setting(client, device_dn, WORKING_MODE_SIGNAL_ID, value)
 
 
 def _plan_to_request(plan: dict) -> dict:
@@ -148,7 +211,7 @@ def set_charger_schedule_enabled(client: Any, device_dn: str, enabled: bool) -> 
         )
     url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/charger/plan/config-plan"
     payload = {
-        "plans": [_plan_to_request(p) for p in current.get("plans", [])],
+        "plans": [_plan_to_request(p) for p in current["plans"]],
         "switchOn": 1 if enabled else 0,
         "accountId": "",
         "dnId": int(charger_dn_id),

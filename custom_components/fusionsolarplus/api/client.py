@@ -803,6 +803,10 @@ class FusionSolarClient:
         charger_api.set_charger_working_mode(self, device_dn, value)
 
     @logged_in
+    def set_charger_setting(self, device_dn: str, signal_id: int, value: str) -> None:
+        charger_api.set_charger_setting(self, device_dn, signal_id, value)
+
+    @logged_in
     def set_charger_schedule_enabled(self, device_dn: str, enabled: bool) -> None:
         charger_api.set_charger_schedule_enabled(self, device_dn, enabled)
 
