@@ -1,0 +1,53 @@
+{
+  "title": "FusionSolarPlus",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Bei FusionSolar anmelden",
+        "description": "# FusionSolarPlus\n\nBitte gib deine FusionSolar-Zugangsdaten ein.\n\n Wenn du den Wechselrichter ein- oder ausschalten möchtest, aktiviere bitte den Installateur-Zugriff. Zum Auslesen von Daten und zur Steuerung der Wallbox ist er nicht nötig.\n\n ## Haftungsausschluss \n\n Wenn du den Installateur-Zugriff aktivieren möchtest, lies bitte zuerst den Haftungsausschluss, den du [hier]({disclaimer_url}) findest.",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort",
+          "subdomain": "Subdomain",
+          "installer": "Installateur-Zugriff aktivieren. Mit dem Setzen dieses Hakens bestätige ich, den Haftungsausschluss für Installateure gelesen zu haben."
+        }
+      },
+      "choose_type": {
+        "title": "Gerätetyp",
+        "data": {
+          "device_type": "Was möchtest du einrichten?"
+        }
+      },
+      "select_device": {
+        "title": "Gerät auswählen",
+        "data": {
+          "device_name": "Bitte wähle ein Gerät aus deinem Konto aus"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Benutzername oder Passwort ungültig.",
+      "fetch_error": "Die Geräte konnten nicht abgerufen werden.",
+      "rate_limit": "Das Limit der Captcha-API ist erreicht. Bitte versuche es in 24 Stunden erneut.",
+      "unknown": "Es ist ein unbekannter Fehler aufgetreten."
+    },
+    "abort": {
+      "fetch_error": "Die Geräteliste konnte nicht von FusionSolar abgerufen werden."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Gerät neu konfigurieren",
+        "description": "Wenn du den Wechselrichter ein- oder ausschalten möchtest, aktiviere bitte den Installateur-Zugriff. Zum Auslesen von Daten und zur Steuerung der Wallbox ist er nicht nötig.\n\n ## Haftungsausschluss \n\n Wenn du den Installateur-Zugriff aktivieren möchtest, lies bitte zuerst den Haftungsausschluss, den du [hier]({disclaimer_url}) findest.",
+        "data": {
+          "username": "Benutzername",
+          "password": "Passwort",
+          "subdomain": "Subdomain",
+          "installer": "Installateur-Zugriff aktivieren. Mit dem Setzen dieses Hakens bestätige ich, den Haftungsausschluss für Installateure gelesen zu haben.",
+          "scan_interval": "Aktualisierungsintervall in Sekunden (10-3600)"
+        }
+      }
+    }
+  }
+}
