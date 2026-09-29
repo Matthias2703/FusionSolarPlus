@@ -4,40 +4,38 @@
 <table align="center" border="0">
   <tr>
     <td align="center">
-      <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=JortvanSchijndel&repository=FusionSolarPlus&category=Integration">
-        <img alt="Total Downloads" src="https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fanalytics.home-assistant.io%2Fcustom_integrations.json&query=%24.fusionsolarplus.total&logo=homeassistantcommunitystore&logoColor=%235c5c5c&label=Total%20Downloads&labelColor=%23ffffff&color=%234983FF&cacheSeconds=600">
+      <a href="https://github.com/Matthias2703/FusionSolarPlus/actions/workflows/lint.yml">
+        <img alt="Lint Workflow" src="https://img.shields.io/github/actions/workflow/status/Matthias2703/FusionSolarPlus/lint.yml?branch=feature/charger-control&logo=testcafe&logoColor=%235c5c5c&label=Lint%20Workflow&labelColor=%23ffffff&color=%234983FF&cacheSeconds=600">
       </a>
     </td>
     <td align="center">
-      <a href="https://github.com/JortvanSchijndel/FusionSolarPlus/releases">
-        <img alt="GitHub Release" src="https://img.shields.io/github/v/release/JortvanSchijndel/FusionSolarPlus?display_name=release&logo=V&logoColor=%235c5c5c&label=Latest%20Version&labelColor=%23ffffff&color=%234983FF&cacheSeconds=600">
+      <a href="https://github.com/Matthias2703/FusionSolarPlus/actions/workflows/validate.yml">
+        <img alt="Hassfest & HACS Validation Workflow" src="https://img.shields.io/github/actions/workflow/status/Matthias2703/FusionSolarPlus/validate.yml?branch=feature/charger-control&logo=testcafe&logoColor=%235c5c5c&label=Hassfest%20%26%20HACS%20Validation%20Workflow&labelColor=%23ffffff&color=%234983FF&cacheSeconds=600">
       </a>
     </td>
     <td align="center">
-      <a href="https://github.com/JortvanSchijndel/FusionSolarPlus/actions/workflows/lint.yml">
-        <img alt="Lint Workflow" src="https://img.shields.io/github/actions/workflow/status/JortvanSchijndel/FusionSolarPlus/lint.yml?logo=testcafe&logoColor=%235c5c5c&label=Lint%20Workflow&labelColor=%23ffffff&color=%234983FF&cacheSeconds=600">
-      </a>
-    </td>
-    <td align="center">
-      <a href="https://github.com/JortvanSchijndel/FusionSolarPlus/actions/workflows/validate.yml">
-        <img alt="Hassfest & HACS Validation Workflow" src="https://img.shields.io/github/actions/workflow/status/JortvanSchijndel/FusionSolarPlus/validate.yml?logo=testcafe&logoColor=%235c5c5c&label=Hassfest%20%26%20HACS%20Validation%20Workflow&labelColor=%23ffffff&color=%234983FF&cacheSeconds=600">
+      <a href="https://github.com/Matthias2703/FusionSolarPlus/actions/workflows/tests.yml">
+        <img alt="Tests Workflow" src="https://img.shields.io/github/actions/workflow/status/Matthias2703/FusionSolarPlus/tests.yml?branch=feature/charger-control&logo=testcafe&logoColor=%235c5c5c&label=Tests%20Workflow&labelColor=%23ffffff&color=%234983FF&cacheSeconds=600">
       </a>
     </td>
   </tr>
 </table>
 
 ___
-> [!NOTE] 
-> For some development (e.g. batteries, optimizers & car chargers) I will need access to an account which has access to (one of) these devices. 
-> If you are willing to help by granting me access to your account, please [open an issue](https://github.com/JortvanSchijndel/FusionSolarPlus/issues).
+> [!NOTE]
+> **This is a fork** of [JortvanSchijndel/FusionSolarPlus](https://github.com/JortvanSchijndel/FusionSolarPlus), maintained separately by [Matthias2703](https://github.com/Matthias2703). It adds control of a Huawei SCharger wallbox (charging mode, schedule, cable lock, dynamic power) on top of the original's read-only entities. See [Changes in this fork](#changes-in-this-fork) for the full list.
+>
+> It has been tested on exactly one device (a SCharger-22KT-S0 with an EMMA) and is run on the author's own Home Assistant. Everything that writes to hardware is off by default (see [Charger control](#charger-control-experimental-off-by-default)) and was built carefully, but there is no guarantee it behaves the same on a different charger model. Use it, but keep an eye on it.
 
 # FusionSolarPlus
-This integration brings full FusionSolar support to Home Assistant, with entities for plants, inverters, and more. It authenticates using your FusionSolar username and password. No northbound API, OpenAPI, or kiosk URL required. I originally built it as a custom Python script that sent data via MQTT, but realizing others might want a Home Assistant integration with full entity support, I ported it with AI assistance into a proper integration for easier use.
+This integration brings full FusionSolar support to Home Assistant, with entities for plants, inverters, and more. It authenticates using your FusionSolar username and password. No northbound API, OpenAPI, or kiosk URL required. Jort van Schijndel originally built it as a custom Python script that sent data via MQTT, but realizing others might want a Home Assistant integration with full entity support, he ported it with AI assistance into a proper integration for easier use. This fork builds on that work.
 
 ## Setup
-Click the button below and download the FusionSolarPlus integration.
+Click the button below to add this fork as a custom repository in HACS.
 
-<a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=JortvanSchijndel&repository=FusionSolarPlus&category=Integration" target="_blank" rel="noreferrer noopener"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open your Home Assistant instance and open a repository inside the Home Assistant Community Store." /></a>
+<a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=Matthias2703&repository=FusionSolarPlus&category=Integration" target="_blank" rel="noreferrer noopener"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open your Home Assistant instance and open a repository inside the Home Assistant Community Store." /></a>
+
+This fork is not in the HACS default store; the button above adds it as a custom repository. Select the `feature/charger-control` branch when prompted.
 
 Once installed:
 
@@ -1358,10 +1356,13 @@ Compared with the original integration:
 * **NaN values.** `NaN` and infinity are no longer passed on as sensor values.
 * **Startup.** A failed first refresh raises `ConfigEntryNotReady` so Home Assistant retries, instead of leaving the entry failed. Errors in the login/retry path are logged instead of being swallowed.
 * **German translation** of the setup and options dialogs.
-* **Tests** for the charger API layer (`python -m pytest tests`), which run without Home Assistant.
+* **Safer schedule switching.** Nothing is written unless two reads agree on a complete list of repeating plans; the previous plans are logged and backed up before every write and restored automatically if they do not come back unchanged.
+* **Login errors** now map to `ConfigEntryAuthFailed`/`ConfigEntryNotReady` instead of a generic failure, with a reauthentication step for a changed password.
+* **Entity registry cleanup.** Turning charger control off, or updating from a version that had a writable power limit, removes the now-unused entities instead of leaving them behind as unavailable.
+* **Tests** for the charger API layer and the charger entities (`python -m pytest tests`), which run without Home Assistant.
 
 # Issues
-If you encounter any problems while using the integration, please [open an issue](https://github.com/JortvanSchijndel/FusionSolarPlus/issues).
+This fork is maintained separately from the original. For anything related to the changes listed above (in particular charger control), please [open an issue on this fork](https://github.com/Matthias2703/FusionSolarPlus/issues) rather than the original repository. For anything else, the [original repository's issues](https://github.com/JortvanSchijndel/FusionSolarPlus/issues) are the right place.
 Be sure to include as much relevant information as possible, this helps with troubleshooting and speeds up the resolution process.
 
 # Development
@@ -1376,7 +1377,7 @@ To contribute or run FusionSolarPlus locally, follow these steps:
 
 3. **Clone the repository:**
    ```bash
-   git clone https://github.com/JortvanSchijndel/FusionSolarPlus.git && cd FusionSolarPlus
+   git clone https://github.com/Matthias2703/FusionSolarPlus.git && cd FusionSolarPlus && git checkout feature/charger-control
    ```
 
 4. **Copy the dev container configuration:**
@@ -1396,10 +1397,10 @@ To contribute or run FusionSolarPlus locally, follow these steps:
 This will set up a reproducible development environment with all dependencies installed and Home Assistant will be accessible at http://localhost:8123.
 
 # ❤️ Sponsors
-Special thanks to my sponsors!<br>
-<a href="https://github.com/wichtounet"><img src="https://images.weserv.nl/?url=github.com/wichtounet.png&mask=hexagon&w=80&h=80"/></a>
-<a href="https://github.com/roman893"><img src="https://images.weserv.nl/?url=github.com/roman893.png&mask=hexagon&w=80&h=80"/></a>
-<br>Want to join them? Check out my sponsor page [here!](https://github.com/sponsors/JortvanSchijndel)
+
+This fork is free and open source. If it's useful to you and you'd like to support the work on it, you can sponsor [Matthias2703](https://github.com/sponsors/Matthias2703) on GitHub Sponsors.
+
+The entities and API layer this fork is built on come from the original FusionSolarPlus by [JortvanSchijndel](https://github.com/JortvanSchijndel) - consider sponsoring [his work](https://github.com/sponsors/JortvanSchijndel) too.
 
 # Legal Notice
 This integration for Home Assistant uses a custom modified version of [FusionSolarPy](https://github.com/jgriss/FusionSolarPy).
