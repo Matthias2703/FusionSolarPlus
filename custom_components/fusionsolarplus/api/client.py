@@ -18,6 +18,7 @@ from typing import Any, Optional
 import re
 import requests
 
+from .values import numeric_or_zero
 from .exceptions import (
     AuthenticationException,
     CaptchaRequiredException,
@@ -838,10 +839,12 @@ class FusionSolarClient:
         """
         battery_stats = self.get_battery_status(battery_id)
 
-        # ensure that all values are numeric
+        # The portal reports "-" when a value is unavailable; anything else that
+        # parses as a number is kept, including negatives (battery discharging).
         for index in (2, 4, 5, 6, 7, 8):
-            if "-" in battery_stats[index]["realValue"]:
-                battery_stats[index]["realValue"] = 0
+            battery_stats[index]["realValue"] = numeric_or_zero(
+                battery_stats[index]["realValue"]
+            )
 
         battery_status = BatteryStatus(
             state_of_charge=float(battery_stats[8]["realValue"]),

@@ -9,6 +9,8 @@ from typing import Any
 from custom_components.fusionsolarplus.api.constants import MODULE_SIGNALS
 from custom_components.fusionsolarplus.api.exceptions import FusionSolarException
 
+from ..values import finite_or_none
+
 
 def get_battery_ids(client: Any, plant_id) -> list:
     plant_flow = client.get_plant_flow(plant_id)
@@ -134,7 +136,7 @@ def _signals_to_value_map(
             continue
 
         try:
-            values[int(signal_id)] = float(raw_value)
+            values[int(signal_id)] = finite_or_none(float(raw_value))
         except (TypeError, ValueError):
             values[int(signal_id)] = raw_value
 
