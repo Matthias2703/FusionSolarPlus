@@ -33,6 +33,7 @@ CONNECTOR = "connector"
 CHARGER = "charger"
 
 WORKING_MODE_SIGNAL_ID = 20002  # 0 = Normal charge, 1 = PV Power Preferred
+CONNECTOR_NUMBER = 1  # the SCharger has one gun; the app always sends gunNumber 1
 
 # Only these signals may ever be written. Which dn they live on was taken
 # from the app's own requests: they all belong to the connector (tree child).
@@ -368,6 +369,45 @@ def set_charger_setting(
 def set_charger_working_mode(client: Any, device_dn: str, value: str) -> None:
     """Set the working mode: "0" = Normal charge, "1" = PV Power Preferred."""
     set_charger_setting(client, device_dn, WORKING_MODE_SIGNAL_ID, value)
+
+
+def _charge_command(client: Any, device_dn: str, action: str, payload: dict) -> Any:
+    """Send start-charge / stop-charge for the charger (same requests as the app)."""
+    with _client_lock(client):
+        client.keep_alive()
+        _, charger_dn_id = _get_dn_ids(client, device_dn)
+        url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/charger/charge/{action}"
+        try:
+            body = _json(
+                client._session.post(
+                    url=url, json={**payload, "dnId": int(charger_dn_id)}
+                )
+            )
+        finally:
+            invalidate_control_cache(device_dn)
+        if not isinstance(body, dict) or "chargeStatus" not in body:
+            raise RuntimeError(f"{action} returned no chargeStatus: {body!r}")
+        return body["chargeStatus"]
+
+
+def start_charging(client: Any, device_dn: str) -> Any:
+    """Start a charge on connector 1; returns the cloud's chargeStatus."""
+    return _charge_command(
+        client,
+        device_dn,
+        "start-charge",
+        {"accountId": "", "gunNumber": CONNECTOR_NUMBER},
+    )
+
+
+def stop_charging(client: Any, device_dn: str) -> Any:
+    """Stop the running charge on connector 1; returns the cloud's chargeStatus."""
+    return _charge_command(
+        client,
+        device_dn,
+        "stop-charge",
+        {"gunNumber": CONNECTOR_NUMBER, "orderNumber": None, "serialNumber": None},
+    )
 
 
 def _hhmm(value: str) -> int:

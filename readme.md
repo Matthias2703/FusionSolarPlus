@@ -77,6 +77,7 @@ The read-only charger sensors (status, power, energy and charge history) do not 
 | Charging Mode | select | *Charge now*, *PV surplus* or *Scheduled*, the three modes of the FusionSolar app | working mode `20002` + schedule switch |
 | Cable Lock | select | Always lock / lock when charging / lock after being inserted (the app's names) | `20005` |
 | Dynamic Power | switch | Dynamic charge power on/off | `538976529` |
+| Start charging / Stop charging | button | Starts or stops a charge, the same requests as the app's start/stop button | `charge/start-charge`, `charge/stop-charge` |
 
 The cable lock and dynamic power are shown as configuration entities; only *Charging Mode* is a regular control.
 
@@ -97,7 +98,7 @@ If the schedule is on, *Scheduled* wins whatever the working mode says. The work
 
 ## How writes behave
 
-* Only a fixed list of signals can be written (working mode, cable lock, dynamic power and the schedule switch). Installer and safety values such as the main breaker, earthing system, networking mode, phase switching and the charging plans themselves are never written.
+* Only a fixed list of signals can be written (working mode, cable lock, dynamic power and the schedule switch), plus the start and stop charge commands. Installer and safety values such as the main breaker, earthing system, networking mode, phase switching and the charging plans themselves are never written.
 * Values are checked before anything is sent (allowed options only).
 * Every change is confirmed by reading the value back (up to three checks, then one rewrite). While that happens the entity shows the requested value instead of turning *unavailable*; if the cloud never confirms it, the action fails with an error.
 * Switching the schedule has to resend the whole plan list (the cloud replaces it as a whole), so it is done defensively: nothing is written if the schedule is already in the requested state, if the plan list is missing or empty, if two reads a moment apart disagree, or if a plan is a one-time plan or lacks a field (change the mode in the FusionSolar app then). Before the write the plans are logged as a WARNING and stored in `.storage/fusionsolarplus_plan_backup` (the last five). Afterwards every stored field is compared; if the plans did not come back exactly, one restore attempt is made and the action fails with an error that says whether it worked.

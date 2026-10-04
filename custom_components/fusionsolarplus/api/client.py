@@ -859,6 +859,14 @@ class FusionSolarClient:
         charger_api.set_charger_schedule_enabled(self, device_dn, enabled, backup)
 
     @logged_in
+    def start_charging(self, device_dn: str):
+        return charger_api.start_charging(self, device_dn)
+
+    @logged_in
+    def stop_charging(self, device_dn: str):
+        return charger_api.stop_charging(self, device_dn)
+
+    @logged_in
     def get_pv_info(
         self, device_dn: str = None
     ) -> dict:  # Doesn't generate the Power Entities for PV only Current & Volt

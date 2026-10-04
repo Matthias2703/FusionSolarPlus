@@ -166,6 +166,39 @@ def test_settings_are_written_to_the_connector_dn():
     assert sent == {"changeValues": [{"id": "20002", "value": "1"}], "dnId": 301}
 
 
+def test_start_charging_sends_what_the_app_sends_to_the_charger_dn():
+    client = Client({"charge/start-charge": Response({"chargeStatus": 1})})
+    assert charger_api.start_charging(client, "NE=1") == 1
+    sent = client._session.writes("charge/start-charge")[0][2]["json"]
+    assert sent == {"accountId": "", "gunNumber": 1, "dnId": 302}
+
+
+def test_stop_charging_sends_what_the_app_sends_to_the_charger_dn():
+    client = Client({"charge/stop-charge": Response({"chargeStatus": 3})})
+    assert charger_api.stop_charging(client, "NE=1") == 3
+    sent = client._session.writes("charge/stop-charge")[0][2]["json"]
+    assert sent == {
+        "gunNumber": 1,
+        "orderNumber": None,
+        "serialNumber": None,
+        "dnId": 302,
+    }
+
+
+@pytest.mark.parametrize("body", [None, {}, {"exceptionId": "PVMS.1"}])
+def test_a_charge_command_without_a_status_is_an_error(body):
+    client = Client({"charge/start-charge": Response(body)})
+    with pytest.raises(RuntimeError):
+        charger_api.start_charging(client, "NE=1")
+
+
+def test_a_charge_command_invalidates_the_control_cache():
+    charger_api._CONTROL_CACHE["NE=1"] = (0, {})
+    client = Client({"charge/stop-charge": Response({"chargeStatus": 3})})
+    charger_api.stop_charging(client, "NE=1")
+    assert "NE=1" not in charger_api._CONTROL_CACHE
+
+
 def plan_client(*states, config_plan=None):
     """A client whose query-plan answers `states` in order, then repeats the last."""
     queue = list(states)

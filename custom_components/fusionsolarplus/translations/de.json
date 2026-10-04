@@ -60,6 +60,14 @@
     }
   },
   "entity": {
+    "button": {
+      "start_charging": {
+        "name": "Ladevorgang starten"
+      },
+      "stop_charging": {
+        "name": "Ladevorgang stoppen"
+      }
+    },
     "select": {
       "charging_mode": {
         "name": "Lademodus",

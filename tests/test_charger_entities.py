@@ -247,6 +247,8 @@ ENTITIES = [
     entity_stub("select", "NE=1_charging_mode_select", "select.mode"),
     entity_stub("select", "NE=1_connector_lock_control", "select.lock"),
     entity_stub("switch", "NE=1_dynamic_charge_power", "switch.dyn"),
+    entity_stub("button", "NE=1_start_charging", "button.start"),
+    entity_stub("button", "NE=1_stop_charging", "button.stop"),
     entity_stub("sensor", "NE=1_charge_power_limit_sensor", "sensor.limit"),
     entity_stub("sensor", "NE=1_history_total", "sensor.history"),
     entity_stub("number", "NE=1_charge_power_limit", "number.old_limit"),
@@ -257,6 +259,8 @@ ENTITIES = [
 def test_with_control_off_only_the_control_entities_are_removed():
     stale = cleanup.stale_entity_ids(ENTITIES, "NE=1", control_on=False)
     assert sorted(stale) == [
+        "button.start",
+        "button.stop",
         "number.old_limit",
         "select.lock",
         "select.mode",

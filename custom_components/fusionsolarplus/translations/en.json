@@ -60,6 +60,14 @@
     }
   },
   "entity": {
+    "button": {
+      "start_charging": {
+        "name": "Start charging"
+      },
+      "stop_charging": {
+        "name": "Stop charging"
+      }
+    },
     "select": {
       "charging_mode": {
         "name": "Charging mode",
