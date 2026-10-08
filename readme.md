@@ -112,7 +112,7 @@ If the schedule is on, *Scheduled* wins whatever the working mode says. The work
 * **Schedules are stored in UTC.** The cloud returns and expects the plan times in UTC and the app converts them (a plan shown as 17:00 in Germany in summer is stored as 15:00). The integration never edits plans; when switching the schedule it resends them exactly as read.
 * **Only the first connector is used.** A charger with more than one connector is controlled through the first one and a warning is logged.
 * **One-time plans block mode switching from Home Assistant.** They cannot be reproduced exactly, so switching the schedule is refused while one exists.
-* **Starting or stopping a running charging session is not supported.** Only the mode and settings above are.
+* **Start/stop buttons only send the app's request.** Whether a charge actually starts or stops still depends on the wallbox, the car and the EMMA's own logic.
 * **Two controllers.** An EMMA runs its own automatic charging logic. The integration only sees a change made by the EMMA or the app on the next update and does not fight it.
 * Charge now, PV surplus and Scheduled describe what the cloud reports; the wallbox itself needs a connected and released car to actually charge.
 
