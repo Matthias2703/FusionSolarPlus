@@ -35,7 +35,7 @@ Click the button below to add this fork as a custom repository in HACS.
 
 <a href="https://my.home-assistant.io/redirect/hacs_repository/?owner=Matthias2703&repository=FusionSolarPlus&category=Integration" target="_blank" rel="noreferrer noopener"><img src="https://my.home-assistant.io/badges/hacs_repository.svg" alt="Open your Home Assistant instance and open a repository inside the Home Assistant Community Store." /></a>
 
-This fork is not in the HACS default store; the button above adds it as a custom repository. Select the `feature/charger-control` branch when prompted.
+This fork is not in the HACS default store; the button above adds it as a custom repository. HACS only offers releases and the default branch, so enable **Show beta versions** for the repository and pick the latest `v2.3.5-charger.*` pre-release in the *Redownload* dialog. The code lives on the `feature/charger-control` branch; to run it without HACS, copy `custom_components/fusionsolarplus` from that branch into your config folder.
 
 Once installed:
 
