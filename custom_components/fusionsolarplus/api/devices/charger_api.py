@@ -385,9 +385,11 @@ def _charge_command(client: Any, device_dn: str, action: str, payload: dict) -> 
             )
         finally:
             invalidate_control_cache(device_dn)
-        if not isinstance(body, dict) or "chargeStatus" not in body:
-            raise RuntimeError(f"{action} returned no chargeStatus: {body!r}")
-        return body["chargeStatus"]
+        # The cloud may answer with an empty body although the command went
+        # through; real failures (exceptionId, code != 0) are raised by _json().
+        if isinstance(body, dict):
+            return body.get("chargeStatus")
+        return None
 
 
 def start_charging(client: Any, device_dn: str) -> Any:

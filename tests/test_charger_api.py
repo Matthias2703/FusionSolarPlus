@@ -185,9 +185,14 @@ def test_stop_charging_sends_what_the_app_sends_to_the_charger_dn():
     }
 
 
-@pytest.mark.parametrize("body", [None, {}, {"exceptionId": "PVMS.1"}])
-def test_a_charge_command_without_a_status_is_an_error(body):
+@pytest.mark.parametrize("body", [None, {}])
+def test_a_charge_command_with_an_empty_body_is_accepted(body):
     client = Client({"charge/start-charge": Response(body)})
+    assert charger_api.start_charging(client, "NE=1") is None
+
+
+def test_a_charge_command_with_an_exception_id_is_an_error():
+    client = Client({"charge/start-charge": Response({"exceptionId": "PVMS.1"})})
     with pytest.raises(RuntimeError):
         charger_api.start_charging(client, "NE=1")
 
