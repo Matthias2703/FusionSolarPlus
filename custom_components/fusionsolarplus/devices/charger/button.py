@@ -1,4 +1,4 @@
-"""Button platform for Charger devices: start and stop a charge."""
+"""Button platform for Charger devices: start, schedule and stop a charge."""
 
 import logging
 from typing import Any, Dict, List
@@ -28,12 +28,13 @@ class ChargerButtonHandler(BaseDeviceHandler):
         )
         return [
             FusionSolarChargeButton(*args, "start_charging", "mdi:play-circle"),
+            FusionSolarChargeButton(*args, "schedule_charging", "mdi:calendar-clock"),
             FusionSolarChargeButton(*args, "stop_charging", "mdi:stop-circle"),
         ]
 
 
 class FusionSolarChargeButton(CoordinatorEntity, ButtonEntity):
-    """Sends the app's start-charge / stop-charge request.
+    """Sends the app's start-charge / confirm-auth (Schedule) / stop-charge request.
 
     The cloud answers with the new charge status; the sensors pick the change
     up on the next poll, which is requested right after the command.

@@ -185,6 +185,14 @@ def test_stop_charging_sends_what_the_app_sends_to_the_charger_dn():
     }
 
 
+def test_schedule_charging_sends_what_the_app_sends_to_the_charger_dn():
+    client = Client({"auth/confirm-auth": Response(None)})
+    assert charger_api.schedule_charging(client, "NE=1") is None
+    sent = client._session.writes("auth/confirm-auth")[0][2]["json"]
+    assert sent == {"accountId": "", "authType": 0, "gunNumber": 1, "dnId": 302}
+    assert client._session.writes("charge/start-charge") == []
+
+
 @pytest.mark.parametrize("body", [None, {}])
 def test_a_charge_command_with_an_empty_body_is_accepted(body):
     client = Client({"charge/start-charge": Response(body)})

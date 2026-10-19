@@ -78,6 +78,7 @@ The read-only charger sensors (status, power, energy and charge history) do not 
 | Cable Lock | select | Always lock / lock when charging / lock after being inserted (the app's names) | `20005` |
 | Dynamic Power | switch | Dynamic charge power on/off | `538976529` |
 | Start charging / Stop charging | button | Starts or stops a charge, the same requests as the app's start/stop button | `charge/start-charge`, `charge/stop-charge` |
+| Schedule charging | button | The app's *Schedule* button in *Scheduled* mode: arms the saved plans instead of charging right away. *Start charging* ignores the plans. Set *Charging Mode* to *Scheduled* first. | `auth/confirm-auth` |
 
 The cable lock and dynamic power are shown as configuration entities; only *Charging Mode* is a regular control.
 

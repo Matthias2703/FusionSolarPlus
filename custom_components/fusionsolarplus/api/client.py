@@ -863,6 +863,10 @@ class FusionSolarClient:
         return charger_api.start_charging(self, device_dn)
 
     @logged_in
+    def schedule_charging(self, device_dn: str):
+        return charger_api.schedule_charging(self, device_dn)
+
+    @logged_in
     def stop_charging(self, device_dn: str):
         return charger_api.stop_charging(self, device_dn)
 

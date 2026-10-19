@@ -6,6 +6,7 @@ CONTROL_SUFFIXES = (
     "_connector_lock_control",
     "_dynamic_charge_power",
     "_start_charging",
+    "_schedule_charging",
     "_stop_charging",
     "_charge_power_limit_sensor",
     "_pv_start_surplus_sensor",

@@ -372,11 +372,14 @@ def set_charger_working_mode(client: Any, device_dn: str, value: str) -> None:
 
 
 def _charge_command(client: Any, device_dn: str, action: str, payload: dict) -> Any:
-    """Send start-charge / stop-charge for the charger (same requests as the app)."""
+    """Send a charge request for the charger (same requests as the app).
+
+    `action` is the path below .../v1/charger/, e.g. "charge/start-charge".
+    """
     with _client_lock(client):
         client.keep_alive()
         _, charger_dn_id = _get_dn_ids(client, device_dn)
-        url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/charger/charge/{action}"
+        url = f"{_base_url(client)}/rest/neteco/web/homemgr/v1/charger/{action}"
         try:
             body = _json(
                 client._session.post(
@@ -397,8 +400,23 @@ def start_charging(client: Any, device_dn: str) -> Any:
     return _charge_command(
         client,
         device_dn,
-        "start-charge",
+        "charge/start-charge",
         {"accountId": "", "gunNumber": CONNECTOR_NUMBER},
+    )
+
+
+def schedule_charging(client: Any, device_dn: str) -> Any:
+    """Arm the saved charging plans (the app's "Schedule" button).
+
+    Unlike start-charge this does not charge right away: the charger waits
+    (chargeStatus 10) and charges inside the plans. The app sends it in
+    "Scheduled Charging" mode, after switching the plans on.
+    """
+    return _charge_command(
+        client,
+        device_dn,
+        "auth/confirm-auth",
+        {"accountId": "", "authType": 0, "gunNumber": CONNECTOR_NUMBER},
     )
 
 
@@ -407,7 +425,7 @@ def stop_charging(client: Any, device_dn: str) -> Any:
     return _charge_command(
         client,
         device_dn,
-        "stop-charge",
+        "charge/stop-charge",
         {"gunNumber": CONNECTOR_NUMBER, "orderNumber": None, "serialNumber": None},
     )
 

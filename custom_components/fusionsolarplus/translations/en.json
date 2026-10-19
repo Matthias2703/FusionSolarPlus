@@ -64,6 +64,9 @@
       "start_charging": {
         "name": "Start charging"
       },
+      "schedule_charging": {
+        "name": "Schedule charging"
+      },
       "stop_charging": {
         "name": "Stop charging"
       }
